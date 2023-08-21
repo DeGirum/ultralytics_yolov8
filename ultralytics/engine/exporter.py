@@ -164,10 +164,8 @@ class Exporter:
             raise ValueError(f"Invalid export format='{format}'. Valid formats are {fmts}")
         jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, ncnn = flags  # export booleans
 
-        # Device
-        if format == 'engine' and self.args.device is None:
-            LOGGER.warning('WARNING ⚠️ TensorRT requires GPU export, automatically assigning device=0')
-            self.args.device = '0'
+        # Load PyTorch model
+        Conv.default_act = eval(self.args.act) if hasattr(self.args, 'act') else nn.SiLU()
         self.device = select_device('cpu' if self.args.device is None else self.args.device)
 
         # Checks
@@ -689,7 +687,7 @@ class Exporter:
             verbosity = '--non_verbose'
             int8 = ''
 
-        cmd = f'onnx2tf -i "{f_onnx}" -o "{f}" -nuo {verbosity} {int8}'.strip()
+        cmd = f'onnx2tf -i "{f_onnx}" -o "{f}" -nuo {verbosity} {int8} -prf replace.json'.strip()
         LOGGER.info(f"{prefix} running '{cmd}'")
         subprocess.run(cmd, shell=True)
         yaml_save(f / 'metadata.yaml', self.metadata)  # add metadata.yaml
