@@ -160,8 +160,10 @@ class Exporter:
             raise ValueError(f"Invalid export format='{format}'. Valid formats are {fmts}")
         jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, ncnn = flags  # export booleans
 
-        # Load PyTorch model
-        Conv.default_act = eval(self.args.act) if hasattr(self.args, 'act') else nn.SiLU()
+        # Device
+        if format == 'engine' and self.args.device is None:
+            LOGGER.warning('WARNING ⚠️ TensorRT requires GPU export, automatically assigning device=0')
+            self.args.device = '0'
         self.device = select_device('cpu' if self.args.device is None else self.args.device)
 
         # Checks
