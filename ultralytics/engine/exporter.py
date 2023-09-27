@@ -60,12 +60,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from ultralytics.cfg import get_cfg
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.data.utils import check_det_dataset
 from ultralytics.nn.autobackend import check_class_names
-from ultralytics.nn.modules import C2f, Detect, RTDETRDecoder
+from ultralytics.nn.modules import C2f, Detect, RTDETRDecoder, Conv
 from ultralytics.nn.tasks import DetectionModel, SegmentationModel
 from ultralytics.utils import (ARM64, DEFAULT_CFG, LINUX, LOGGER, MACOS, ROOT, WINDOWS, __version__, callbacks,
                                colorstr, get_default_args, yaml_save)
@@ -193,12 +194,12 @@ class Exporter:
                 'ncnn'), 'export_hw_optimized =True is not compatible with formats: coreml, paddle, and nccn'
         # Input
         im = torch.zeros(self.args.batch, 3, *self.imgsz).to(self.device)
-        file = Path(
-            getattr(model, 'pt_path', None) or getattr(model, 'yaml_file', None) or model.yaml.get('yaml_file', ''))
+        file = Path(getattr(model, 'pt_path', None) or getattr(model, 'yaml_file', None) or model.yaml['yaml_file'])
         if file.suffix in ('.yaml', '.yml'):
             file = Path(file.name)
 
         # Update model
+        print(f'{colorstr("act:")} nn.{Conv.default_act}')
         model = deepcopy(model).to(self.device)
         for p in model.parameters():
             p.requires_grad = False
@@ -234,8 +235,7 @@ class Exporter:
         self.im = im
         self.model = model
         self.file = file
-        self.output_shape = tuple(y.shape) if isinstance(y, torch.Tensor) else \
-            tuple(tuple(x.shape if isinstance(x, torch.Tensor) else []) for x in y)
+        self.output_shape = tuple(y.shape) if isinstance(y, torch.Tensor) else tuple(tuple(x.shape) for x in y)
         self.pretty_name = Path(self.model.yaml.get('yaml_file', self.file)).stem.replace('yolo', 'YOLO')
         data = model.args['data'] if hasattr(model, 'args') and isinstance(model.args, dict) else ''
         description = f'Ultralytics {self.pretty_name} model {f"trained on {data}" if data else ""}'
