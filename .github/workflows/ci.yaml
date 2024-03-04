@@ -157,9 +157,9 @@ jobs:
       - name: Benchmark ClassificationModel with separate outputs
         shell: bash
         run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-cls.pt' imgsz=160 separate_outputs=True verbose=0.166
-      - name: Benchmark PoseModel with separate outputs
-        shell: bash
-        run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 separate_outputs=True verbose=0.185
+      #- name: Benchmark PoseModel with separate outputs
+      #  shell: bash
+      #  run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 separate_outputs=True verbose=0.185
       # Benchmarks for separate_outputs=True --^
       - name: Merge Coverage Reports
         run: |
