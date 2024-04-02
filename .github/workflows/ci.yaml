@@ -144,12 +144,12 @@ jobs:
       - name: Benchmark ClassificationModel
         shell: bash
         run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-cls.pt' imgsz=160 verbose=0.166
-      #- name: Benchmark PoseModel
-      #  shell: bash
-      #  run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 verbose=0.183
-      #- name: Benchmark OBBModel
-      #  shell: bash
-      #  run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-obb.pt' imgsz=160 verbose=0.472
+      - name: Benchmark PoseModel
+        shell: bash
+        run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 verbose=0.183
+      - name: Benchmark OBBModel
+        shell: bash
+        run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-obb.pt' imgsz=160 verbose=0.472
       # Benchmarks for separate_outputs=True --v
       - name: Benchmark DetectionModel with separate outputs
         shell: bash
@@ -160,9 +160,9 @@ jobs:
       - name: Benchmark ClassificationModel with separate outputs
         shell: bash
         run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-cls.pt' imgsz=160 separate_outputs=True verbose=0.166
-      #- name: Benchmark PoseModel with separate outputs
-      #  shell: bash
-      #  run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 separate_outputs=True verbose=0.185
+      - name: Benchmark PoseModel with separate outputs
+        shell: bash
+        run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 separate_outputs=True verbose=0.185
       # Benchmarks for separate_outputs=True --^
       - name: Merge Coverage Reports
         run: |
