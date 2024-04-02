@@ -227,7 +227,8 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         x = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
-        return x #if self.training else x.softmax(1)
+        return x if self.training else x.softmax(1)
+
 
 class Regress(nn.Module):
     """YOLOv8 regression head, i.e. x(b,c1,20,20) to x(b,c2)."""
@@ -255,7 +256,8 @@ class Regress(nn.Module):
         x = self.conv2(x)
         x = x.flatten(1)
         return x
-    
+
+
 class Regress6(nn.Module):
     """YOLOv8 regression head with output values in the range 0-6, i.e. x(b,c1,20,20) to x(b,c2)."""
     export = False
@@ -286,6 +288,7 @@ class Regress6(nn.Module):
         if not self.export:
             x = x * (self.max - self.min) / 6 + self.min
         return x
+
 
 class WorldDetect(Detect):
     def __init__(self, nc=80, embed=512, with_bn=False, ch=()):
@@ -474,7 +477,7 @@ class RTDETRDecoder(nn.Module):
             anchors.append(torch.cat([grid_xy, wh], -1).view(-1, h * w, 4))  # (1, h*w, 4)
 
         anchors = torch.cat(anchors, 1)  # (1, h*w*nl, 4)
-        valid_mask = ((anchors > eps) * (anchors < 1 - eps)).all(-1, keepdim=True)  # 1, h*w*nl, 1
+        valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)  # 1, h*w*nl, 1
         anchors = torch.log(anchors / (1 - anchors))
         anchors = anchors.masked_fill(~valid_mask, float("inf"))
         return anchors, valid_mask
