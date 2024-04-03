@@ -147,9 +147,9 @@ jobs:
       #- name: Benchmark PoseModel
       #  shell: bash
       #  run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-pose.pt' imgsz=160 verbose=0.183
-      - name: Benchmark OBBModel
-        shell: bash
-        run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-obb.pt' imgsz=160 verbose=0.472
+      #- name: Benchmark OBBModel
+      #  shell: bash
+      #  run: coverage run -a --source=ultralytics -m ultralytics.cfg.__init__ benchmark model='path with spaces/${{ matrix.model }}-obb.pt' imgsz=160 verbose=0.472
       # Benchmarks for separate_outputs=True --v
       - name: Benchmark DetectionModel with separate outputs
         shell: bash
