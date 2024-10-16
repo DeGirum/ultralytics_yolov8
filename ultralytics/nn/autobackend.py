@@ -575,12 +575,13 @@ class AutoBackend(nn.Module):
                 self.interpreter.set_tensor(details["index"], im)
                 self.interpreter.invoke()
                 y = []
+                num_outputs = len(self.output_details)
                 for output in self.output_details:
                     x = self.interpreter.get_tensor(output["index"])
                     if is_int:
                         scale, zero_point = output["quantization"]
                         x = (x.astype(np.float32) - zero_point) * scale  # re-scale
-                    if x.ndim == 3:  # if task is not classification, excluding masks (ndim=4) as well
+                    if x.ndim == 3 and num_outputs < 6:  # if task is not classification, excluding masks (ndim=4) as well
                         # Denormalize xywh by image size. See https://github.com/ultralytics/ultralytics/pull/1695
                         # xywh are normalized in TFLite/EdgeTPU to mitigate quantization error of integer models
                         if x.shape[-1] == 6:  # end-to-end model
@@ -590,7 +591,7 @@ class AutoBackend(nn.Module):
                         else:
                             x[:, [0, 2]] *= w
                             x[:, [1, 3]] *= h
-                            if self.task == "pose" or x.shape[1] > 5:
+                            if self.task == "pose":
                                 x[:, 5::3] *= w
                                 x[:, 6::3] *= h
                     y.append(x)
