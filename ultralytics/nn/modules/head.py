@@ -234,6 +234,11 @@ class OBB(Detect):
     def forward(self, x):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
         bs = x[0].shape[0]  # batch size
+
+        if self.separate_outputs and self.export:
+            angle = [self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)]
+            return Detect.forward(self, x) + angle
+
         angle = torch.cat([self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)], 2)  # OBB theta logits
         # NOTE: set `angle` as an attribute so that `decode_bboxes` could use it.
         angle = (angle.sigmoid() - 0.25) * math.pi  # [-pi/4, 3pi/4]
