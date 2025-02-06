@@ -236,7 +236,7 @@ class OBB(Detect):
         bs = x[0].shape[0]  # batch size
 
         if self.separate_outputs and self.export:
-            return Detect.forward(self, x) + [self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)]
+            return [self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)] + Detect.forward(self, x)
 
         angle = torch.cat([self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)], 2)  # OBB theta logits
         # NOTE: set `angle` as an attribute so that `decode_bboxes` could use it.
