@@ -40,7 +40,16 @@ def test_amp():
     ],
 )
 def test_export_engine_matrix(task, dynamic, int8, half, batch):
-    """Test YOLO model export to TensorRT format for various configurations and run inference."""
+    """
+    Test YOLO model export to TensorRT format for various configurations and run inference.
+
+    Args:
+        task (str): Task type like 'detect', 'segment', etc.
+        dynamic (bool): Whether to use dynamic input size.
+        int8 (bool): Whether to use INT8 precision.
+        half (bool): Whether to use FP16 precision.
+        batch (int): Batch size for export.
+    """
     file = YOLO(TASK2MODEL[task]).export(
         format="engine",
         imgsz=32,
@@ -106,7 +115,7 @@ def test_utils_benchmarks():
 
     # Pre-export a dynamic engine model to use dynamic inference
     YOLO(MODEL).export(format="engine", imgsz=32, dynamic=True, batch=1)
-    ProfileModels([MODEL], imgsz=32, half=False, min_time=1, num_timed_runs=3, num_warmup_runs=1).profile()
+    ProfileModels([MODEL], imgsz=32, half=False, min_time=1, num_timed_runs=3, num_warmup_runs=1).run()
 
 
 @pytest.mark.skipif(not CUDA_IS_AVAILABLE, reason="CUDA is not available")

@@ -4,7 +4,7 @@ import contextlib
 import importlib.metadata
 import inspect
 import json
-import logging.config
+import logging
 import os
 import platform
 import re
@@ -12,7 +12,6 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 import warnings
 from pathlib import Path
 from threading import Lock
@@ -21,13 +20,13 @@ from typing import Union
 from urllib.parse import unquote
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import tqdm
 import yaml
 
 from ultralytics import __version__
+from ultralytics.utils.patches import imread, imshow, imwrite, torch_load, torch_save  # for patches
 
 # PyTorch Multi-GPU DDP Constants
 RANK = int(os.getenv("RANK", -1))
@@ -47,6 +46,7 @@ VERBOSE = str(os.getenv("YOLO_VERBOSE", True)).lower() == "true"  # global verbo
 TQDM_BAR_FORMAT = "{l_bar}{bar:10}{r_bar}" if VERBOSE else None  # tqdm bar format
 LOGGING_NAME = "ultralytics"
 MACOS, LINUX, WINDOWS = (platform.system() == x for x in ["Darwin", "Linux", "Windows"])  # environment booleans
+MACOS_VERSION = platform.mac_ver()[0] if MACOS else None
 ARM64 = platform.machine() in {"arm64", "aarch64"}  # ARM64 booleans
 PYTHON_VERSION = platform.python_version()
 TORCH_VERSION = torch.__version__
@@ -125,7 +125,7 @@ HELP_MSG = """
 
 # Settings and Environment Variables
 torch.set_printoptions(linewidth=320, precision=4, profile="default")
-np.set_printoptions(linewidth=320, formatter={"float_kind": "{:11.5g}".format})  # format short g, %precision=5
+np.set_printoptions(linewidth=320, formatter=dict(float_kind="{:11.5g}".format))  # format short g, %precision=5
 cv2.setNumThreads(0)  # prevent OpenCV from multithreading (incompatible with PyTorch DataLoader)
 os.environ["NUMEXPR_MAX_THREADS"] = str(NUM_THREADS)  # NumExpr max threads
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # for deterministic training to avoid CUDA warning
@@ -304,17 +304,24 @@ def plt_settings(rcparams=None, backend="Agg"):
     """
     Decorator to temporarily set rc parameters and the backend for a plotting function.
 
-    Example:
-        decorator: @plt_settings({"font.size": 12})
-        context manager: with plt_settings({"font.size": 12}):
-
     Args:
-        rcparams (dict): Dictionary of rc parameters to set.
+        rcparams (dict, optional): Dictionary of rc parameters to set.
         backend (str, optional): Name of the backend to use. Defaults to 'Agg'.
 
     Returns:
-        (Callable): Decorated function with temporarily set rc parameters and backend. This decorator can be
-            applied to any function that needs to have specific matplotlib rc parameters and backend for its execution.
+        (Callable): Decorated function with temporarily set rc parameters and backend.
+
+    Examples:
+        >>> @plt_settings({"font.size": 12})
+        >>> def plot_function():
+        ...     plt.figure()
+        ...     plt.plot([1, 2, 3])
+        ...     plt.show()
+
+        >>> with plt_settings({"font.size": 12}):
+        ...     plt.figure()
+        ...     plt.plot([1, 2, 3])
+        ...     plt.show()
     """
     if rcparams is None:
         rcparams = {"font.size": 11}
@@ -324,6 +331,8 @@ def plt_settings(rcparams=None, backend="Agg"):
 
         def wrapper(*args, **kwargs):
             """Sets rc parameters and backend, calls the original function, and restores the settings."""
+            import matplotlib.pyplot as plt  # scope for faster 'import ultralytics'
+
             original_backend = plt.get_backend()
             switch = backend.lower() != original_backend.lower()
             if switch:
@@ -357,6 +366,9 @@ def set_logging(name="LOGGING_NAME", verbose=True):
         name (str): Name of the logger. Defaults to "LOGGING_NAME".
         verbose (bool): Flag to set logging level to INFO if True, ERROR otherwise. Defaults to True.
 
+    Returns:
+        (logging.Logger): Configured logger object.
+
     Examples:
         >>> set_logging(name="ultralytics", verbose=True)
         >>> logger = logging.getLogger("ultralytics")
@@ -370,15 +382,25 @@ def set_logging(name="LOGGING_NAME", verbose=True):
     """
     level = logging.INFO if verbose and RANK in {-1, 0} else logging.ERROR  # rank in world for Multi-GPU trainings
 
-    # Configure the console (stdout) encoding to UTF-8, with checks for compatibility
-    formatter = logging.Formatter("%(message)s")  # Default formatter
+    class PrefixFormatter(logging.Formatter):
+        def format(self, record):
+            """Format log records with prefixes based on level."""
+            # Apply prefixes based on log level
+            if record.levelno == logging.WARNING:
+                prefix = "WARNING ⚠️" if not WINDOWS else "WARNING"
+                record.msg = f"{prefix} {record.msg}"
+            elif record.levelno == logging.ERROR:
+                prefix = "ERROR ❌" if not WINDOWS else "ERROR"
+                record.msg = f"{prefix} {record.msg}"
+
+            # Handle emojis in message based on platform
+            formatted_message = super().format(record)
+            return emojis(formatted_message)
+
+    formatter = PrefixFormatter("%(message)s")
+
+    # Handle Windows UTF-8 encoding issues
     if WINDOWS and hasattr(sys.stdout, "encoding") and sys.stdout.encoding != "utf-8":
-
-        class CustomFormatter(logging.Formatter):
-            def format(self, record):
-                """Sets up logging with UTF-8 encoding and configurable verbosity."""
-                return emojis(super().format(record))
-
         try:
             # Attempt to reconfigure stdout to use UTF-8 encoding if possible
             if hasattr(sys.stdout, "reconfigure"):
@@ -388,11 +410,8 @@ def set_logging(name="LOGGING_NAME", verbose=True):
                 import io
 
                 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-            else:
-                formatter = CustomFormatter("%(message)s")
-        except Exception as e:
-            print(f"Creating custom formatter for non UTF-8 environments due to {e}")
-            formatter = CustomFormatter("%(message)s")
+        except Exception:
+            pass
 
     # Create and configure the StreamHandler with the appropriate formatter and level
     stream_handler = logging.StreamHandler(sys.stdout)
@@ -420,25 +439,23 @@ def emojis(string=""):
 
 class ThreadingLocked:
     """
-    A decorator class for ensuring thread-safe execution of a function or method. This class can be used as a decorator
-    to make sure that if the decorated function is called from multiple threads, only one thread at a time will be able
-    to execute the function.
+    A decorator class for ensuring thread-safe execution of a function or method.
+
+    This class can be used as a decorator to make sure that if the decorated function is called from multiple threads,
+    only one thread at a time will be able to execute the function.
 
     Attributes:
         lock (threading.Lock): A lock object used to manage access to the decorated function.
 
-    Example:
-        ```python
-        from ultralytics.utils import ThreadingLocked
-
-        @ThreadingLocked()
-        def my_function():
-            # Your code here
-        ```
+    Examples:
+        >>> from ultralytics.utils import ThreadingLocked
+        >>> @ThreadingLocked()
+        >>> def my_function():
+        ...    # Your code here
     """
 
     def __init__(self):
-        """Initializes the decorator class for thread-safe execution of a function or method."""
+        """Initialize the decorator class with a threading lock."""
         self.lock = threading.Lock()
 
     def __call__(self, f):
@@ -539,8 +556,7 @@ DEFAULT_CFG = IterableSimpleNamespace(**DEFAULT_CFG_DICT)
 
 def read_device_model() -> str:
     """
-    Reads the device model information from the system and caches it for quick access. Used by is_jetson() and
-    is_raspberrypi().
+    Reads the device model information from the system and caches it for quick access.
 
     Returns:
         (str): Kernel release information.
@@ -622,7 +638,7 @@ def is_docker() -> bool:
 
 def is_raspberrypi() -> bool:
     """
-    Determines if the Python environment is running on a Raspberry Pi by checking the device model information.
+    Determines if the Python environment is running on a Raspberry Pi.
 
     Returns:
         (bool): True if running on a Raspberry Pi, False otherwise.
@@ -632,7 +648,7 @@ def is_raspberrypi() -> bool:
 
 def is_jetson() -> bool:
     """
-    Determines if the Python environment is running on an NVIDIA Jetson device by checking the device model information.
+    Determines if the Python environment is running on an NVIDIA Jetson device.
 
     Returns:
         (bool): True if running on an NVIDIA Jetson device, False otherwise.
@@ -712,8 +728,7 @@ def is_github_action_running() -> bool:
 
 def get_git_dir():
     """
-    Determines whether the current file is part of a git repository and if so, returns the repository root directory. If
-    the current file is not part of a git repository, returns None.
+    Determines whether the current file is part of a git repository and if so, returns the repository root directory.
 
     Returns:
         (Path | None): Git root directory if found or None if not found.
@@ -725,8 +740,7 @@ def get_git_dir():
 
 def is_git_dir():
     """
-    Determines whether the current file is part of a git repository. If the current file is not part of a git
-    repository, returns None.
+    Determines whether the current file is part of a git repository.
 
     Returns:
         (bool): True if current file is part of a git repository.
@@ -815,7 +829,7 @@ def get_user_config_dir(sub_dir="Ultralytics"):
     # GCP and AWS lambda fix, only /tmp is writeable
     if not is_dir_writeable(path.parent):
         LOGGER.warning(
-            f"WARNING ⚠️ user config directory '{path}' is not writeable, defaulting to '/tmp' or CWD."
+            f"user config directory '{path}' is not writeable, defaulting to '/tmp' or CWD."
             "Alternatively you can define a YOLO_CONFIG_DIR environment variable for this path."
         )
         path = Path("/tmp") / sub_dir if is_dir_writeable("/tmp") else Path().cwd() / sub_dir
@@ -942,7 +956,7 @@ class TryExcept(contextlib.ContextDecorator):
     def __exit__(self, exc_type, value, traceback):
         """Defines behavior when exiting a 'with' block, prints error message if necessary."""
         if self.verbose and value:
-            print(emojis(f"{self.msg}{': ' if self.msg else ''}{value}"))
+            LOGGER.warning(f"{self.msg}{': ' if self.msg else ''}{value}")
         return True
 
 
@@ -978,7 +992,7 @@ class Retry(contextlib.ContextDecorator):
                     return func(*args, **kwargs)
                 except Exception as e:
                     self._attempts += 1
-                    print(f"Retry {self._attempts}/{self.times} failed: {e}")
+                    LOGGER.warning(f"Retry {self._attempts}/{self.times} failed: {e}")
                     if self._attempts >= self.times:
                         raise e
                     time.sleep(self.delay * (2**self._attempts))  # exponential backoff delay
@@ -990,7 +1004,23 @@ def threaded(func):
     """
     Multi-threads a target function by default and returns the thread or function result.
 
-    Use as @threaded decorator. The function runs in a separate thread unless 'threaded=False' is passed.
+    This decorator provides flexible execution of the target function, either in a separate thread or synchronously.
+    By default, the function runs in a thread, but this can be controlled via the 'threaded=False' keyword argument
+    which is removed from kwargs before calling the function.
+
+    Args:
+        func (callable): The function to be potentially executed in a separate thread.
+
+    Returns:
+        (callable): A wrapper function that either returns a daemon thread or the direct function result.
+
+    Examples:
+        >>> @threaded
+        ... def process_data(data):
+        ...     return data
+        >>>
+        >>> thread = process_data(my_data)  # Runs in background thread
+        >>> result = process_data(my_data, threaded=False)  # Runs synchronously, returns function result
     """
 
     def wrapper(*args, **kwargs):
@@ -1007,8 +1037,10 @@ def threaded(func):
 
 def set_sentry():
     """
-    Initialize the Sentry SDK for error tracking and reporting. Only used if sentry_sdk package is installed and
-    sync=True in settings. Run 'yolo settings' to see and update settings.
+    Initialize the Sentry SDK for error tracking and reporting.
+
+    Only used if sentry_sdk package is installed and sync=True in settings. Run 'yolo settings' to see and update
+    settings.
 
     Conditions required to send errors (ALL conditions must be met or no errors will be reported):
         - sentry_sdk package is installed
@@ -1019,11 +1051,6 @@ def set_sentry():
         - running with rank -1 or 0
         - online environment
         - CLI used to run package (checked with 'yolo' as the name of the main CLI command)
-
-    The function also configures Sentry SDK to ignore KeyboardInterrupt and FileNotFoundError exceptions and to exclude
-    events with 'out of memory' in their exception message.
-
-    Additionally, the function sets custom tags and user information for Sentry events.
     """
     if (
         not SETTINGS["sync"]
@@ -1121,18 +1148,18 @@ class JSONDict(dict):
                 with open(self.file_path) as f:
                     self.update(json.load(f))
         except json.JSONDecodeError:
-            print(f"Error decoding JSON from {self.file_path}. Starting with an empty dictionary.")
+            LOGGER.warning(f"Error decoding JSON from {self.file_path}. Starting with an empty dictionary.")
         except Exception as e:
-            print(f"Error reading from {self.file_path}: {e}")
+            LOGGER.error(f"Error reading from {self.file_path}: {e}")
 
     def _save(self):
         """Save the current state of the dictionary to the JSON file."""
         try:
             self.file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.file_path, "w") as f:
+            with open(self.file_path, "w", encoding="utf-8") as f:
                 json.dump(dict(self), f, indent=2, default=self._json_default)
         except Exception as e:
-            print(f"Error writing to {self.file_path}: {e}")
+            LOGGER.error(f"Error writing to {self.file_path}: {e}")
 
     @staticmethod
     def _json_default(obj):
@@ -1181,7 +1208,7 @@ class SettingsManager(JSONDict):
     Attributes:
         file (Path): The path to the JSON file used for persistence.
         version (str): The version of the settings schema.
-        defaults (Dict): A dictionary containing default settings.
+        defaults (dict): A dictionary containing default settings.
         help_msg (str): A help message for users on how to view and update settings.
 
     Methods:
@@ -1200,6 +1227,7 @@ class SettingsManager(JSONDict):
     def __init__(self, file=SETTINGS_FILE, version="0.0.6"):
         """Initializes the SettingsManager with default settings and loads user settings."""
         import hashlib
+        import uuid
 
         from ultralytics.utils.torch_utils import torch_distributed_zero_first
 
@@ -1224,7 +1252,7 @@ class SettingsManager(JSONDict):
             "mlflow": True,  # MLflow integration
             "neptune": True,  # Neptune integration
             "raytune": True,  # Ray Tune integration
-            "tensorboard": True,  # TensorBoard logging
+            "tensorboard": False,  # TensorBoard logging
             "wandb": False,  # Weights & Biases logging
             "vscode_msg": True,  # VSCode messaging
         }
@@ -1235,7 +1263,7 @@ class SettingsManager(JSONDict):
             "For help see https://docs.ultralytics.com/quickstart/#ultralytics-settings."
         )
 
-        with torch_distributed_zero_first(RANK):
+        with torch_distributed_zero_first(LOCAL_RANK):
             super().__init__(self.file)
 
             if not self.file.exists() or not self:  # Check if file doesn't exist or is empty
@@ -1252,14 +1280,14 @@ class SettingsManager(JSONDict):
 
         if not (correct_keys and correct_types and correct_version):
             LOGGER.warning(
-                "WARNING ⚠️ Ultralytics settings reset to default values. This may be due to a possible problem "
+                "Ultralytics settings reset to default values. This may be due to a possible problem "
                 f"with your settings or a recent ultralytics package update. {self.help_msg}"
             )
             self.reset()
 
         if self.get("datasets_dir") == self.get("runs_dir"):
             LOGGER.warning(
-                f"WARNING ⚠️ Ultralytics setting 'datasets_dir: {self.get('datasets_dir')}' "
+                f"Ultralytics setting 'datasets_dir: {self.get('datasets_dir')}' "
                 f"must be different than 'runs_dir: {self.get('runs_dir')}'. "
                 f"Please change one to avoid possible issues during training. {self.help_msg}"
             )
@@ -1291,7 +1319,7 @@ class SettingsManager(JSONDict):
 
 def deprecation_warn(arg, new_arg=None):
     """Issue a deprecation warning when a deprecated argument is used, suggesting an updated argument."""
-    msg = f"WARNING ⚠️ '{arg}' is deprecated and will be removed in in the future."
+    msg = f"'{arg}' is deprecated and will be removed in in the future."
     if new_arg is not None:
         msg += f" Use '{new_arg}' instead."
     LOGGER.warning(msg)
@@ -1341,8 +1369,6 @@ TESTS_RUNNING = is_pytest_running() or is_github_action_running()
 set_sentry()
 
 # Apply monkey patches
-from ultralytics.utils.patches import imread, imshow, imwrite, torch_load, torch_save
-
 torch.load = torch_load
 torch.save = torch_save
 if WINDOWS:
