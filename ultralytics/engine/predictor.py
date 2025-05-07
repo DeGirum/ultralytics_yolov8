@@ -392,7 +392,7 @@ class BasePredictor:
             fuse=True,
             verbose=verbose,
             # NOTE: `end2end` only available with detect for now
-            end2end=self.args.end2end and self.args.task == "detect",
+            # end2end=self.args.end2end and self.args.task == "detect",
         )
 
         self.device = self.model.device  # update device
