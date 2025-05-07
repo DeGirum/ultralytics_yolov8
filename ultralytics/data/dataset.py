@@ -832,6 +832,130 @@ class ClassificationDataset:
             save_dataset_cache_file(self.prefix, path, x, DATASET_CACHE_VERSION)
             return samples
 
+# Multi-label-classification dataloader ---------------------------------------------
+class MultiLabelClassificationDataset:
+    """
+    Dataset for multi-label classification using annotations from a TXT file.
+    Each line: <image_name> <label_1> <label_2> ... <label_n>
+    """
+
+    def __init__(self, anno_path, args, augment=False, prefix=""):
+        """
+        Args:
+            anno_path (str or Path): Path to the .txt file containing image filenames and label vectors.
+            args (Namespace): Configuration containing dataset-related settings.
+            augment (bool): Whether to apply augmentations.
+            prefix (str): Optional prefix for cache/logging/debugging.
+        """
+        import torchvision  # scope for faster 'import ultralytics'
+
+        # Base class assigned as attribute rather than used as base class to allow for scoping slow torchvision import
+        self.base = torchvision.datasets.vision.VisionDataset(root=anno_path)        
+        self.samples = self.get_samples(anno_path)
+        self.root = self.base.root
+        if augment and args.fraction < 1.0:
+            self.samples = self.samples[: round(len(self.samples) * args.fraction)]
+
+        self.prefix = colorstr(f"{prefix}: ") if prefix else ""
+        self.cache_ram = args.cache is True or str(args.cache).lower() == "ram"
+        self.cache_disk = str(args.cache).lower() == "disk"
+
+        if self.cache_ram:
+            LOGGER.warning("RAM caching has known issues, disabling it.")
+            self.cache_ram = False
+
+        self.samples = self.verify_images()
+        self.samples = [list(x) + [Path(x[0]).with_suffix(".npy"), None] for x in self.samples]
+        scale = (1.0 - args.scale, 1.0)
+        self.torch_transforms = (
+            classify_augmentations(
+                size=args.imgsz,
+                scale=scale,
+                hflip=args.fliplr,
+                vflip=args.flipud,
+                erasing=args.erasing,
+                auto_augment=args.auto_augment,
+                hsv_h=args.hsv_h,
+                hsv_s=args.hsv_s,
+                hsv_v=args.hsv_v,
+            )
+            if augment
+            else classify_transforms(size=args.imgsz, crop_fraction=args.crop_fraction)
+        )
+
+    def __getitem__(self, i):
+        f, labels, fn, im = self.samples[i]
+        if self.cache_ram:
+            if im is None:
+                im = self.samples[i][3] = cv2.imread(str(f))
+        elif self.cache_disk:
+            if not fn.exists():
+                np.save(fn.as_posix(), cv2.imread(str(f)), allow_pickle=False)
+            im = np.load(fn)
+        else:
+            im = cv2.imread(str(f))
+
+        im = Image.fromarray(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
+        sample = self.torch_transforms(im)
+        return {"img": sample, "cls": labels, "name": str(f)}
+
+    def __len__(self):
+        return len(self.samples)
+
+    def get_samples(self, anno_path):
+        #Check that path exists
+        assert os.path.exists(anno_path), "Path to annotations is invalid"
+        
+        samples=[]
+        parent_path = os.path.split(anno_path)[0]
+        # Read and parse the txt file
+        with open(anno_path, "r") as f:
+            for line in f.readlines():
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                img_file = os.path.join(parent_path, parts[0])
+                labels = np.array([int(x) for x in parts[1:]], dtype=np.float32)
+                samples.append([img_file, labels])
+        return samples
+    
+    def verify_images(self):
+        desc = f"{self.prefix}Scanning {self.root}..."
+        path = Path(self.root).with_suffix(".cache")  # *.cache file path
+
+        try:
+            cache = load_dataset_cache_file(path)  # attempt to load a *.cache file
+            assert cache["version"] == DATASET_CACHE_VERSION
+            assert cache["hash"] == get_hash([str(x[0]) for x in self.samples])
+            nf, nc, n, samples = cache.pop("results")
+            if LOCAL_RANK in {-1, 0}:
+                TQDM(None, desc=f"{desc} {nf} images, {nc} corrupt", total=n, initial=n)
+                if cache["msgs"]:
+                    LOGGER.info("\n".join(cache["msgs"]))
+            return samples
+        
+        except (FileNotFoundError, AssertionError, AttributeError):
+            nf, nc, msgs, samples, x = 0, 0, [], [], {}
+            with ThreadPool(NUM_THREADS) as pool:
+                results = pool.imap(func=verify_image, iterable=zip(self.samples, repeat(self.prefix)))
+                pbar = TQDM(results, desc=desc, total=len(self.samples))
+                for sample, nf_f, nc_f, msg in pbar:
+                    if nf_f:
+                        samples.append(sample)
+                    if msg:
+                        msgs.append(msg)
+                    nf += nf_f
+                    nc += nc_f
+                    pbar.desc = f"{desc} {nf} images, {nc} corrupt"
+                pbar.close()
+
+            if msgs:
+                LOGGER.info("\n".join(msgs))
+            x["hash"] = get_hash([str(x[0]) for x in self.samples])
+            x["results"] = nf, nc, len(samples), samples
+            x["msgs"] = msgs
+            save_dataset_cache_file(self.prefix, path, x, DATASET_CACHE_VERSION)
+            return samples
 
 # Regression dataloaders -------------------------------------------------------------------------------------------
 class RegressionDataset:

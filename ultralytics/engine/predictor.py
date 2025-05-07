@@ -254,7 +254,7 @@ class BasePredictor:
                 "transforms",
                 classify_transforms(self.imgsz[0]),
             )
-            if self.args.task in ("classify", "regress")
+            if self.args.task in ("classify", "regress", "multi_label_classify")
             else None
         )
         self.dataset = load_inference_source(

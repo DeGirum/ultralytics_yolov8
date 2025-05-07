@@ -74,7 +74,19 @@ class FocalLoss(nn.Module):
             loss *= alpha_factor
         return loss.mean(1).sum()
 
+class BCEWithLogitsLoss(nn.Module):
+    """Criterion class for computing BCEWithLogitsLoss during training"""
 
+    def __init__(self):
+        """Initializer for BCEWithLogitsLoss class with no parameters."""
+        super().__init__()
+
+    @staticmethod
+    def forward(pred, label):
+        """Compute the multi label classification loss between predictions and true labels."""
+        loss = F.binary_cross_entropy_with_logits(pred, label, reduction="none")
+        return loss
+    
 class DFLoss(nn.Module):
     """Criterion class for computing Distribution Focal Loss (DFL)."""
 
@@ -616,6 +628,16 @@ class v8ClassificationLoss:
         loss_items = loss.detach()
         return loss, loss_items
 
+class v8MultiLabelClassificationLoss:
+    """Criterion class for computing multi-label classification losses."""
+
+    def __call__(self, preds, batch):
+        """Compute the multi-label classification loss between predictions and true labels."""
+        preds = preds[1] if isinstance(preds, (list, tuple)) else preds
+        # Use BCEWithLogitsLoss, as it is designed for multi-label problems
+        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"], reduction="mean")
+        loss_items = loss.detach()  # Return loss value without tracking the gradients
+        return loss, loss_items
 
 class v8OBBLoss(v8DetectionLoss):
     """Calculates losses for object detection, classification, and box distribution in rotated YOLO models."""

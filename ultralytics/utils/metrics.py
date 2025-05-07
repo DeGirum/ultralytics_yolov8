@@ -1258,6 +1258,50 @@ class ClassifyMetrics(SimpleClass):
         """Return a list of curves for accessing specific metrics curves."""
         return []
 
+class MultiLabelClassifyMetrics(SimpleClass):
+    """
+    Class for computing multi label classification metrics with hamming accuracy.
+
+    Attributes:
+        hamming_acc (float): The hamming label accuracy.
+        speed (Dict[str, float]): A dictionary containing the time taken for each step in the pipeline.
+        fitness (float): The fitness of the model, which is equal to top-5 accuracy.
+        results_dict (Dict[str, Union[float, str]]): A dictionary containing the classification metrics and fitness.
+        keys (List[str]): A list of keys for the results_dict.
+
+    Methods:
+        process(targets, pred): Processes the targets and predictions to compute classification metrics.
+    """
+
+    def __init__(self) -> None:
+        """Initialize a MultiLabelClassifyMetrics instance."""
+        self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
+        self.task = "multi_label_classify"
+
+    def process(self, targets, pred):
+        """Target classes and predicted classes."""
+        pred, targets = torch.cat(pred), torch.cat(targets)
+        self.hamming_acc = (pred == targets).float().mean().item()
+ 
+    @property
+    def results_dict(self):
+        """Returns a dictionary with model's performance metrics and fitness score."""
+        return dict(zip(self.keys, [self.hamming_acc]))
+
+    @property
+    def keys(self):
+        """Returns a list of keys for the results_dict property."""
+        return ["metrics/hamming_accuracy"]
+
+    @property
+    def curves(self):
+        """Returns a list of curves for accessing specific metrics curves."""
+        return []
+
+    @property
+    def curves_results(self):
+        """Returns a list of curves for accessing specific metrics curves."""
+        return []
 
 class OBBMetrics(SimpleClass):
     """
