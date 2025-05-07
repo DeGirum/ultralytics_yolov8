@@ -15,7 +15,6 @@ from ultralytics.utils import (
     DEFAULT_CFG,
     DEFAULT_CFG_DICT,
     DEFAULT_CFG_PATH,
-    DEFAULT_SOL_DICT,
     IS_VSCODE,
     LOGGER,
     RANK,
