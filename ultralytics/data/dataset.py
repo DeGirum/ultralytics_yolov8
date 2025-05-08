@@ -525,14 +525,14 @@ class ClassificationDataset:
 # Multi-label-classification dataloader ---------------------------------------------
 class MultiLabelClassificationDataset:
     """
-    Dataset for multi-label classification using annotations from a TXT file.
+    Dataset for multi-label classification using annotations from a CSV file.
     Each line: <image_name> <label_1> <label_2> ... <label_n>
     """
 
     def __init__(self, anno_path, args, augment=False, prefix=""):
         """
         Args:
-            anno_path (str or Path): Path to the .txt file containing image filenames and label vectors.
+            anno_path (str or Path): Path to the .csv file containing image filenames and label vectors.
             args (Namespace): Configuration containing dataset-related settings.
             augment (bool): Whether to apply augmentations.
             prefix (str): Optional prefix for cache/logging/debugging.
