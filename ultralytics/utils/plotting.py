@@ -245,12 +245,12 @@ class Annotator:
             >>> annotator = Annotator(im0, line_width=10)
             >>> annotator.get_txt_color(color=(104, 31, 17))  # return (255, 255, 255)
         """
-        if color in self.dark_colors:
-            return 104, 31, 17
-        elif color in self.light_colors:
-            return 255, 255, 255
-        else:
-            return txt_color
+        # if color in self.dark_colors:
+        #     return 104, 31, 17
+        # elif color in self.light_colors:
+        #     return 255, 255, 255
+        # else:
+        return txt_color
 
     def box_label(self, box, label="", color=(128, 128, 128), txt_color=(255, 255, 255), rotated=False):
         """
