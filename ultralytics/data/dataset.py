@@ -10,6 +10,7 @@ import os
 import cv2
 import numpy as np
 import torch
+import pandas as pd
 from PIL import Image
 from torch.utils.data import ConcatDataset
 
@@ -592,20 +593,21 @@ class MultiLabelClassificationDataset:
         return len(self.samples)
 
     def get_samples(self, anno_path):
-        #Check that path exists
+        # Check that csv path exists
         assert os.path.exists(anno_path), "Path to annotations is invalid"
-        
-        samples=[]
+
+        samples = []
         parent_path = os.path.split(anno_path)[0]
-        # Read and parse the txt file
-        with open(anno_path, "r") as f:
-            for line in f.readlines():
-                parts = line.split()
-                if len(parts) < 2:
-                    continue
-                img_file = os.path.join(parent_path, parts[0])
-                labels = np.array([int(x) for x in parts[1:]], dtype=np.float32)
-                samples.append([img_file, labels])
+
+        # Read CSV file
+        df = pd.read_csv(anno_path)
+
+        # Expect first column to be image filenames, rest to be labels
+        for _, row in df.iterrows():
+            img_file = os.path.join(parent_path, row.iloc[0])
+            labels = row[1:].astype(np.float32).to_numpy()
+            samples.append([img_file, labels])
+
         return samples
     
     def verify_images(self):

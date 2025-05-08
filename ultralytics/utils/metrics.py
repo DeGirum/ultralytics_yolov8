@@ -1225,10 +1225,11 @@ class ClassifyMetrics(SimpleClass):
 
 class MultiLabelClassifyMetrics(SimpleClass):
     """
-    Class for computing multi label classification metrics with hamming accuracy.
+    Class for computing multi label classification metrics with mean accuracy.
 
     Attributes:
-        hamming_acc (float): The hamming label accuracy.
+        mean_acc (float): The mean label accuracy.
+        mean_f1_score (float): The mean F1 score.
         speed (Dict[str, float]): A dictionary containing the time taken for each step in the pipeline.
         fitness (float): The fitness of the model, which is equal to top-5 accuracy.
         results_dict (Dict[str, Union[float, str]]): A dictionary containing the classification metrics and fitness.
@@ -1246,17 +1247,44 @@ class MultiLabelClassifyMetrics(SimpleClass):
     def process(self, targets, pred):
         """Target classes and predicted classes."""
         pred, targets = torch.cat(pred), torch.cat(targets)
-        self.hamming_acc = (pred == targets).float().mean().item()
+
+        eps = 1e-20
+        # Convert to float for arithmetic
+        targets = targets.float()
+        pred = pred.float()
+
+        # TP + FN
+        gt_pos = (targets == 1).sum(dim=0)
+        # TN + FP
+        gt_neg = (targets == 0).sum(dim=0)
+        # TP
+        true_pos = ((targets == 1) * (pred == 1)).sum(dim=0)
+        # TN
+        true_neg = ((targets == 0) * (pred == 0)).sum(dim=0)
+        # FP
+        false_pos = ((targets == 0) * (pred == 1)).sum(dim=0)
+        # FN
+        false_neg = ((targets == 1) * (pred == 0)).sum(dim=0)
+
+        label_pos_recall = true_pos / (gt_pos + eps)  # Sensitivity / Recall
+        label_neg_recall = true_neg / (gt_neg + eps)  # Specificity
+        label_ma = (label_pos_recall + label_neg_recall) / 2  # Mean Accuracy
+
+        label_prec = true_pos / (true_pos + false_pos + eps)
+        label_f1 = 2 * label_prec * label_pos_recall / (label_prec + label_pos_recall + eps)
+
+        self.mean_acc = label_ma.mean().item()
+        self.mean_f1_score = label_f1.mean().item()
  
     @property
     def results_dict(self):
         """Returns a dictionary with model's performance metrics and fitness score."""
-        return dict(zip(self.keys, [self.hamming_acc]))
+        return dict(zip(self.keys, [self.mean_acc, self.mean_f1_score]))
 
     @property
     def keys(self):
         """Returns a list of keys for the results_dict property."""
-        return ["metrics/hamming_accuracy"]
+        return ["metrics/mean_acc","metrics/mean_f1_score"]
 
     @property
     def curves(self):
