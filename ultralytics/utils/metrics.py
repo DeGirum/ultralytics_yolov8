@@ -1273,6 +1273,8 @@ class MultiLabelClassifyMetrics(SimpleClass):
         label_prec = true_pos / (true_pos + false_pos + eps)
         label_f1 = 2 * label_prec * label_pos_recall / (label_prec + label_pos_recall + eps)
 
+        label_accuracy = (true_pos + true_neg) / (gt_pos + gt_neg + eps)
+        self.label_acc = label_accuracy.tolist()
         self.mean_acc = label_ma.mean().item()
         self.mean_f1_score = label_f1.mean().item()
  
@@ -1280,6 +1282,11 @@ class MultiLabelClassifyMetrics(SimpleClass):
     def results_dict(self):
         """Returns a dictionary with model's performance metrics and fitness score."""
         return dict(zip(self.keys, [self.mean_acc, self.mean_f1_score]))
+
+    @property
+    def per_label_acc(self):
+        """Return the accuracy of each label for a multi label classification model"""
+        return self.label_acc
 
     @property
     def keys(self):
