@@ -136,7 +136,7 @@ class ClassificationValidator(BaseValidator):
         self.metrics.confusion_matrix = self.confusion_matrix
         self.metrics.save_dir = self.save_dir
 
-    def postprocess(self, preds):
+    def postprocess(self, preds, img_shape):
         """Extract the primary prediction from model output if it's in a list or tuple format."""
         return preds[0] if isinstance(preds, (list, tuple)) else preds
 
