@@ -1438,7 +1438,7 @@ class RegressMetrics(SimpleClass):
     @property
     def keys(self):
         """Returns a list of keys for the results_dict property."""
-        return ["metrics/mae", "metrics/mse"]
+        return ["metrics/MAE", "metrics/MSE"]
 
     @property
     def curves(self):

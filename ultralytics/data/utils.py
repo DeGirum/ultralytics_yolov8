@@ -586,7 +586,7 @@ def check_multi_label_cls_dataset(dataset, autodownload=True):
         extract_dir, autodownload = file.parent, False
 
     # Read YAML
-    data = yaml_load(file, append_filename=True)  # dictionary
+    data = YAML.load(file, append_filename=True)  # dictionary
 
     # Checks
     for k in "train", "val":
@@ -670,7 +670,7 @@ def check_regress_dataset(dataset, autodownload=True):
         extract_dir, autodownload = file.parent, False
 
     # Read YAML
-    data = yaml_load(file, append_filename=True)  # dictionary
+    data = YAML.load(file, append_filename=True)  # dictionary
 
     # Checks
     for k in "train", "val":

@@ -79,7 +79,7 @@ class PosePredictor(DetectionPredictor):
         """
         save_feats = getattr(self, "save_feats", False)
         if self.separate_outputs:  # Quant friendly export with separated outputs
-            pred_order, nkpt = separate_outputs_decode(preds, self.args.task)
+            pred_order, nkpt = separate_outputs_decode(preds, self.args.task, self.model.kpt_shape[0] * self.model.kpt_shape[1])
             pred_decoded = decode_bbox(pred_order, img.shape, self.device)
             nc = pred_decoded.shape[1] - 4
             kpt_shape = (nkpt.shape[-1] // 3, 3)
@@ -140,10 +140,7 @@ class PosePredictor(DetectionPredictor):
         """
 
         result = super().construct_result(pred, img, orig_img, img_path)
-        if self.separate_outputs:
-            pred_kpts = pred[:, 6:].view(len(pred), *kpt_shape) if len(pred) else pred[:, 6:]
-        else:
-            pred_kpts = pred[:, 6:].view(len(pred), *self.model.kpt_shape) if len(pred) else pred[:, 6:]
+        pred_kpts = pred[:, 6:].view(len(pred), *self.model.kpt_shape) if len(pred) else pred[:, 6:]
         pred_kpts = ops.scale_coords(img.shape[2:], pred_kpts, orig_img.shape)
         result.update(keypoints=pred_kpts)
         return result

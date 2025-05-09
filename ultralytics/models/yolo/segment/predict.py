@@ -66,7 +66,7 @@ class SegmentationPredictor(DetectionPredictor):
             >>> results = predictor.postprocess(preds, img, orig_img)
         """
         if self.separate_outputs:  # Quant friendly export with separated outputs
-            pred_order, mask, proto = separate_outputs_decode(preds, self.args.task)
+            pred_order, mask, proto = separate_outputs_decode(preds, self.args.task, 32, img.shape)
             preds_decoded = decode_bbox(pred_order, img.shape, self.device)
             nc = preds_decoded.shape[1] - 4
             preds_decoded = torch.cat([preds_decoded, mask.permute(0, 2, 1)], 1)
