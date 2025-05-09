@@ -36,10 +36,14 @@ class MultiLabelClassificationValidator(BaseValidator):
 
     def get_desc(self):
         """Returns a formatted string summarizing multi label classification metrics."""
-        return ("%22s" * 2) % ("classes", "hamming_accuracy")
+        return ("%22s" * 3) % (
+            "classes",
+            "mean_acc",
+            "mean_f1_score"
+        )
 
     def init_metrics(self, model):
-        """Initialize class names, and hamming accuracy."""
+        """Initialize class names, and mean accuracy."""
         self.names = model.names
         self.nc = len(model.names)
         self.pred = []
@@ -88,9 +92,13 @@ class MultiLabelClassificationValidator(BaseValidator):
 
     def print_results(self):
         """Prints evaluation metrics for multi label classification model."""
-        pf = "%22s" + "%11.3g" * len(self.metrics.keys)  # print format
-        LOGGER.info(pf % ("all", self.metrics.hamming_acc))
-
+        pf = "%22s" + "%22.3g" * len(self.metrics.keys)  # print format
+        LOGGER.info(pf % ("all", self.metrics.mean_acc, self.metrics.mean_f1_score))
+        if self.args.verbose and not self.training and self.nc > 1:
+            for i, c in enumerate(self.metrics.per_label_acc):
+                pf = "%22s%11.3f"
+                LOGGER.info(pf % (self.names[i], c))
+            
     def plot_val_samples(self, batch, ni):
         """Plot validation image samples."""
         plot_images(
