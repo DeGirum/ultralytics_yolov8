@@ -31,7 +31,6 @@ from .amg import (
     uncrop_boxes_xyxy,
     uncrop_masks,
 )
-from .build import build_sam
 
 
 class Predictor(BasePredictor):
@@ -48,7 +47,7 @@ class Predictor(BasePredictor):
         device (torch.device): The device (CPU or GPU) on which the model is loaded.
         im (torch.Tensor): The preprocessed input image.
         features (torch.Tensor): Extracted image features.
-        prompts (Dict): Dictionary to store various types of prompts (e.g., bboxes, points, masks).
+        prompts (dict): Dictionary to store various types of prompts (e.g., bboxes, points, masks).
         segment_all (bool): Flag to indicate if full image segmentation should be performed.
         mean (torch.Tensor): Mean values for image normalization.
         std (torch.Tensor): Standard deviation values for image normalization.
@@ -86,7 +85,7 @@ class Predictor(BasePredictor):
         for optimal results.
 
         Args:
-            cfg (Dict): Configuration dictionary containing default settings.
+            cfg (dict): Configuration dictionary containing default settings.
             overrides (Dict | None): Dictionary of values to override default configuration.
             _callbacks (Dict | None): Dictionary of callback functions to customize behavior.
 
@@ -294,6 +293,48 @@ class Predictor(BasePredictor):
             masks = torch.as_tensor(masks, dtype=torch.float32, device=self.device).unsqueeze(1)
         return bboxes, points, labels, masks
 
+    def _prepare_prompts(self, dst_shape, bboxes=None, points=None, labels=None, masks=None):
+        """
+        Prepares and transforms the input prompts for processing based on the destination shape.
+
+        Args:
+            dst_shape (tuple): The target shape (height, width) for the prompts.
+            bboxes (np.ndarray | List | None): Bounding boxes in XYXY format with shape (N, 4).
+            points (np.ndarray | List | None): Points indicating object locations with shape (N, 2) or (N, num_points, 2), in pixels.
+            labels (np.ndarray | List | None): Point prompt labels with shape (N) or (N, num_points). 1 for foreground, 0 for background.
+            masks (List | np.ndarray, Optional): Masks for the objects, where each mask is a 2D array.
+
+        Raises:
+            AssertionError: If the number of points don't match the number of labels, in case labels were passed.
+
+        Returns:
+            (tuple): A tuple containing transformed bounding boxes, points, labels, and masks.
+        """
+        src_shape = self.batch[1][0].shape[:2]
+        r = 1.0 if self.segment_all else min(dst_shape[0] / src_shape[0], dst_shape[1] / src_shape[1])
+        # Transform input prompts
+        if points is not None:
+            points = torch.as_tensor(points, dtype=torch.float32, device=self.device)
+            points = points[None] if points.ndim == 1 else points
+            # Assuming labels are all positive if users don't pass labels.
+            if labels is None:
+                labels = np.ones(points.shape[:-1])
+            labels = torch.as_tensor(labels, dtype=torch.int32, device=self.device)
+            assert points.shape[-2] == labels.shape[-1], (
+                f"Number of points {points.shape[-2]} should match number of labels {labels.shape[-1]}."
+            )
+            points *= r
+            if points.ndim == 2:
+                # (N, 2) --> (N, 1, 2), (N, ) --> (N, 1)
+                points, labels = points[:, None, :], labels[:, None]
+        if bboxes is not None:
+            bboxes = torch.as_tensor(bboxes, dtype=torch.float32, device=self.device)
+            bboxes = bboxes[None] if bboxes.ndim == 1 else bboxes
+            bboxes *= r
+        if masks is not None:
+            masks = torch.as_tensor(masks, dtype=torch.float32, device=self.device).unsqueeze(1)
+        return bboxes, points, labels, masks
+
     def generate(
         self,
         im,
@@ -439,6 +480,8 @@ class Predictor(BasePredictor):
 
     def get_model(self):
         """Retrieves or builds the Segment Anything Model (SAM) for image segmentation tasks."""
+        from .build import build_sam  # slow import
+
         return build_sam(self.args.model)
 
     def postprocess(self, preds, img, orig_imgs):
@@ -634,7 +677,7 @@ class SAM2Predictor(Predictor):
         device (torch.device): The device (CPU or GPU) on which the model is loaded.
         features (Dict[str, torch.Tensor]): Cached image features for efficient inference.
         segment_all (bool): Flag to indicate if all segments should be predicted.
-        prompts (Dict): Dictionary to store various types of prompts for inference.
+        prompts (dict): Dictionary to store various types of prompts for inference.
 
     Methods:
         get_model: Retrieves and initializes the SAM2 model.
@@ -658,6 +701,8 @@ class SAM2Predictor(Predictor):
 
     def get_model(self):
         """Retrieves and initializes the Segment Anything Model 2 (SAM2) for image segmentation tasks."""
+        from .build import build_sam  # slow import
+
         return build_sam(self.args.model)
 
     def prompt_inference(
@@ -701,9 +746,6 @@ class SAM2Predictor(Predictor):
             - The method supports batched inference for multiple objects when points or bboxes are provided.
             - Input prompts (bboxes, points) are automatically scaled to match the input image dimensions.
             - When both bboxes and points are provided, they are merged into a single 'points' input for the model.
-
-        References:
-            - SAM2 Paper: [Add link to SAM2 paper when available]
         """
         features = self.get_im_features(im) if self.features is None else self.features
 
@@ -821,16 +863,16 @@ class SAM2VideoPredictor(SAM2Predictor):
     clearing memory for non-conditional inputs, and setting up callbacks for prediction events.
 
     Attributes:
-        inference_state (Dict): A dictionary to store the current state of inference operations.
+        inference_state (dict): A dictionary to store the current state of inference operations.
         non_overlap_masks (bool): A flag indicating whether masks should be non-overlapping.
         clear_non_cond_mem_around_input (bool): A flag to control clearing non-conditional memory around inputs.
         clear_non_cond_mem_for_multi_obj (bool): A flag to control clearing non-conditional memory for multi-object scenarios.
-        callbacks (Dict): A dictionary of callbacks for various prediction lifecycle events.
+        callbacks (dict): A dictionary of callbacks for various prediction lifecycle events.
 
     Args:
-        cfg (Dict, Optional): Configuration settings for the predictor. Defaults to DEFAULT_CFG.
-        overrides (Dict, Optional): Additional configuration overrides. Defaults to None.
-        _callbacks (List, Optional): Custom callbacks to be added. Defaults to None.
+        cfg (dict, Optional): Configuration settings for the predictor. Defaults to DEFAULT_CFG.
+        overrides (dict, Optional): Additional configuration overrides. Defaults to None.
+        _callbacks (list, Optional): Custom callbacks to be added. Defaults to None.
 
     Note:
         The `fill_hole_area` attribute is defined but not used in the current implementation.
@@ -847,7 +889,7 @@ class SAM2VideoPredictor(SAM2Predictor):
         that control the behavior of the predictor.
 
         Args:
-            cfg (Dict): Configuration dictionary containing default settings.
+            cfg (dict): Configuration dictionary containing default settings.
             overrides (Dict | None): Dictionary of values to override default configuration.
             _callbacks (Dict | None): Dictionary of callback functions to customize behavior.
 
@@ -1287,11 +1329,11 @@ class SAM2VideoPredictor(SAM2Predictor):
         Run tracking on a single frame based on current inputs and previous memory.
 
         Args:
-            output_dict (Dict): The dictionary containing the output states of the tracking process.
+            output_dict (dict): The dictionary containing the output states of the tracking process.
             frame_idx (int): The index of the current frame.
             batch_size (int): The batch size for processing the frame.
             is_init_cond_frame (bool): Indicates if the current frame is an initial conditioning frame.
-            point_inputs (Dict, Optional): Input points and their labels. Defaults to None.
+            point_inputs (dict, Optional): Input points and their labels. Defaults to None.
             mask_inputs (torch.Tensor, Optional): Input binary masks. Defaults to None.
             reverse (bool): Indicates if the tracking should be performed in reverse order.
             run_mem_encoder (bool): Indicates if the memory encoder should be executed.
@@ -1562,7 +1604,7 @@ class SAM2VideoPredictor(SAM2Predictor):
 
         Args:
             frame_idx (int): The index of the current frame.
-            current_out (Dict): The current output dictionary containing multi-object outputs.
+            current_out (dict): The current output dictionary containing multi-object outputs.
             storage_key (str): The key used to store the output in the per-object output dictionary.
         """
         maskmem_features = current_out["maskmem_features"]
