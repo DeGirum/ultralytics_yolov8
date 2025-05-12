@@ -1641,7 +1641,7 @@ def guess_model_task(model):
         model (torch.nn.Module | dict): PyTorch model or model configuration in YAML format.
 
     Returns:
-        (str): Task of the model ('detect', 'segment', 'classify', 'pose', 'regress', 'obb').
+        (str): Task of the model ('detect', 'segment', 'classify', 'multi_label_classify', 'pose', 'regress', 'obb').
     """
 
     def cfg2task(cfg):
@@ -1697,6 +1697,8 @@ def guess_model_task(model):
             return "segment"
         elif "-cls" in model.stem or "classify" in model.parts:
             return "classify"
+        elif "-mlcls" in model.stem or "multi_label_classify" in model.parts:
+            return "multi_label_classify"
         elif "-pose" in model.stem or "pose" in model.parts:
             return "pose"
         elif "-obb" in model.stem or "obb" in model.parts:

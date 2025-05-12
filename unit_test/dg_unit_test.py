@@ -19,7 +19,8 @@ if __name__ == '__main__':
         ["yolo", "benchmark", "format=openvino", "data=ultralytics/cfg/datasets/coco8-seg.yaml", "model=yolo11n-seg.pt", "imgsz=160", "separate_outputs=True", "verbose=0.247", "device=cpu"],
         ["yolo", "benchmark", "format=openvino", "data=ultralytics/cfg/datasets/imagenet10.yaml", "model=yolo11n-cls.pt", "imgsz=160", "separate_outputs=True", "verbose=0.166", "device=cpu"],
         ["yolo", "benchmark", "format=openvino", "data=ultralytics/cfg/datasets/coco8-pose.yaml", "model=yolo11n-pose.pt", "imgsz=160", "separate_outputs=True", "verbose=0.185", "device=cpu"],
-        # ["yolo", "benchmark", "format=openvino", "data=ultralytics/cfg/datasets/imdb10-age.yaml", "model=../yolo_zoo_checkpoints/age_regression/8n_relu6/yolov8n_relu6_age.pt", "imgsz=256", "verbose=4.2", "device=cpu"],
+        # ["yolo", "benchmark", "format=openvino", "data=ultralytics/cfg/datasets/imdb10-age.yaml", "model=../../yolo_zoo_checkpoints/age_regression/8n_relu6/yolov8n_relu6_age.pt", "imgsz=256", "verbose=4.2", "device=cpu"],
+        # ["yolo", "benchmark", "format=openvino", "data=ultralytics/cfg/datasets/celeba-facial-attributes.yaml", "model=../celeba_facial_attributes_best-mlcls.pt", "imgsz=160", "verbose=0.65", "device=cpu"],
 
         ["yolo", "benchmark", "int8=True", "format=openvino", "data=ultralytics/cfg/datasets/coco8.yaml", "model=yolo11n.pt", "imgsz=160", "export_hw_optimized=True", "verbose=0.301", "device=cpu"],
         ["yolo", "benchmark", "int8=True", "format=openvino", "data=ultralytics/cfg/datasets/coco8-seg.yaml", "model=yolo11n-seg.pt", "imgsz=160", "export_hw_optimized=True", "verbose=0.192", "device=cpu"],
