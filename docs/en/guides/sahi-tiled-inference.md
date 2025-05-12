@@ -20,7 +20,7 @@ SAHI (Slicing Aided Hyper Inference) is an innovative library designed to optimi
 
 <p align="center">
   <br>
-  <iframe loading="lazy" width="720" height="405" src="https://www.youtube.com/embed/tq3FU_QczxE"
+  <iframe loading="lazy" width="720" height="405" src="https://www.youtube.com/embed/ILqMBah5ZvI"
     title="YouTube video player" frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
     allowfullscreen>
@@ -73,12 +73,6 @@ pip install -U ultralytics sahi
 Here's how to import the necessary modules and download a YOLO11 model and some test images:
 
 ```python
-from pathlib import Path
-
-from IPython.display import Image
-from sahi import AutoDetectionModel
-from sahi.predict import get_prediction, get_sliced_prediction, predict
-from sahi.utils.cv import read_image
 from sahi.utils.file import download_from_url
 from sahi.utils.ultralytics import download_yolo11n_model
 
