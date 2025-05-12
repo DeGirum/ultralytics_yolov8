@@ -76,7 +76,7 @@ TASK2METRIC = {
     "pose": "metrics/mAP50-95(P)",
     "obb": "metrics/mAP50-95(B)",
     "regress": "metrics/MAE",
-    "multi_label_classify": "metrics/hamming_acc"
+    "multi_label_classify": "metrics/mean_acc"
 }
 MODELS = frozenset({TASK2MODEL[task] for task in TASKS})
 

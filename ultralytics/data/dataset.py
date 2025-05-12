@@ -911,7 +911,7 @@ class MultiLabelClassificationDataset:
         parent_path = os.path.split(anno_path)[0]
 
         # Read CSV file
-        df = pd.read_csv(anno_path)
+        df = pd.read_csv(anno_path, sep=" ")
 
         # Expect first column to be image filenames, rest to be labels
         for _, row in df.iterrows():

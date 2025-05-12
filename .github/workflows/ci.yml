@@ -11,9 +11,9 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, master]
-  schedule:
-    - cron: "0 8 * * *" # runs at 08:00 UTC every day
+    branches: [main]
+  # schedule:
+  #   - cron: "0 8 * * *" # runs at 08:00 UTC every day
   workflow_dispatch:
     inputs:
       hub:
