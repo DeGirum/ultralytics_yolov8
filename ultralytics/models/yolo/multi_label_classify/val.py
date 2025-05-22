@@ -104,18 +104,20 @@ class MultiLabelClassificationValidator(BaseValidator):
         plot_images(
             images=batch["img"],
             batch_idx=torch.arange(len(batch["img"])),
-            cls=batch["cls"].view(-1),  # warning: use .view(), not .squeeze() for Classify models
+            cls=batch["cls"],  # warning: use .view(), not .squeeze() for Classify models
             fname=self.save_dir / f"val_batch{ni}_labels.jpg",
             names=self.names,
             on_plot=self.on_plot,
         )
 
     def plot_predictions(self, batch, preds, ni):
-        """Plots predicted bounding boxes on input images and saves the result."""
+        """Plots predicted bounding boxes on input images and saves the result."""    
+        # Apply threshold (e.g., 0.5)
+        thresholded_preds = (preds > 0.5).int()
         plot_images(
             batch["img"],
             batch_idx=torch.arange(len(batch["img"])),
-            cls=preds,
+            cls=torch.tensor(thresholded_preds),
             fname=self.save_dir / f"val_batch{ni}_pred.jpg",
             names=self.names,
             on_plot=self.on_plot,
