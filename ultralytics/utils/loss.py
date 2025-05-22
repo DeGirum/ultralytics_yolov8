@@ -1,5 +1,6 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+import pickle, numpy as np, math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -623,11 +624,39 @@ class v8ClassificationLoss:
 class v8MultiLabelClassificationLoss:
     """Criterion class for computing multi-label classification losses."""
 
-    def __call__(self, preds, batch):
+    def __call__(self, preds, batch, weights=None):
+        with open("/data1/ml_data/pedestrian_attributes/peta_partition.pkl", "rb") as f:
+            partition = pickle.load(f)
+        with open("/data1/ml_data/pedestrian_attributes/peta_dataset.pkl", "rb") as f:
+            dataset = pickle.load(f)
+        rate = np.array(partition['weight_trainval'][0])
+        rate = rate[dataset['selected_attribute']].tolist()
+        num_att =  batch["cls"].shape[1]
+        if len(rate) != num_att:
+            print ("the length of rate should be equal to %d" % (num_att))
+            raise ValueError
+        weight_pos = []
+        weight_neg = []
+        for idx, v in enumerate(rate):
+            weight_pos.append(math.exp(1.0 - v))
+            weight_neg.append(math.exp(v))
+
+        weights = torch.zeros(batch["cls"].shape)
+
+        for i in range(batch["cls"].shape[0]):   # Loop over batch
+            for j in range(batch["cls"].shape[1]):  # Loop over each class
+                # print (batch["cls"].data.cpu()[i, j])
+                if batch["cls"].data.cpu()[i, j] == 0:
+                    weights[i, j] = weight_neg[j]
+                elif batch["cls"].data.cpu()[i, j] == 1:
+                    weights[i, j] = weight_pos[j]
+                else:
+                    weights[i, j] = 0
+
         """Compute the multi-label classification loss between predictions and true labels."""
         preds = preds[1] if isinstance(preds, (list, tuple)) else preds
         # Use BCEWithLogitsLoss, as it is designed for multi-label problems
-        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"], reduction="mean")
+        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"], weight=weights.cuda())*num_att
         loss_items = loss.detach()  # Return loss value without tracking the gradients
         return loss, loss_items
 
