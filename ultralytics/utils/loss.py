@@ -631,7 +631,7 @@ class v8MultiLabelClassificationLoss:
             dataset = pickle.load(f)
         rate = np.array(partition['weight_trainval'][0])
         rate = rate[dataset['selected_attribute']].tolist()
-        num_att =  batch["cls"].shape[1]
+        num_att = batch["cls"].shape[1]
         if len(rate) != num_att:
             print ("the length of rate should be equal to %d" % (num_att))
             raise ValueError
