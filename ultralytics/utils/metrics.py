@@ -1241,12 +1241,18 @@ class MultiLabelClassifyMetrics(SimpleClass):
 
     def __init__(self) -> None:
         """Initialize a MultiLabelClassifyMetrics instance."""
+        self.mean_acc = 0.0
+        self.mean_f1_score = 0.0
+        self.label_acc = []
         self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
         self.task = "multi_label_classify"
 
     def process(self, targets, pred):
         """Target classes and predicted classes."""
-        pred, targets = torch.cat(pred), torch.cat(targets)
+        if isinstance(pred, list):
+            pred = torch.cat(pred)
+        if isinstance(targets, list):
+            targets = torch.cat(targets)
 
         eps = 1e-20
         # Convert to float for arithmetic
@@ -1277,11 +1283,15 @@ class MultiLabelClassifyMetrics(SimpleClass):
         self.label_acc = label_accuracy.tolist()
         self.mean_acc = label_ma.mean().item()
         self.mean_f1_score = label_f1.mean().item()
- 
+
+    @property
+    def fitness(self):
+        return self.mean_acc
+
     @property
     def results_dict(self):
         """Returns a dictionary with model's performance metrics and fitness score."""
-        return dict(zip(self.keys, [self.mean_acc, self.mean_f1_score]))
+        return dict(zip(self.keys + ["fitness"], [self.mean_acc, self.mean_f1_score, self.fitness]))
 
     @property
     def per_label_acc(self):
@@ -1291,7 +1301,7 @@ class MultiLabelClassifyMetrics(SimpleClass):
     @property
     def keys(self):
         """Returns a list of keys for the results_dict property."""
-        return ["metrics/mean_acc","metrics/mean_f1_score"]
+        return ["metrics/mean_acc", "metrics/mean_f1_score"]
 
     @property
     def curves(self):
