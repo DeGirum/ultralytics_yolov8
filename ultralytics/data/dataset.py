@@ -568,9 +568,10 @@ class MultiLabelClassificationDataset:
                 hsv_h=args.hsv_h,
                 hsv_s=args.hsv_s,
                 hsv_v=args.hsv_v,
+                stretch=True
             )
             if augment
-            else classify_transforms(size=args.imgsz, crop_fraction=args.crop_fraction)
+            else classify_transforms(size=args.imgsz, crop_fraction=args.crop_fraction, stretch=True)
         )
 
     def __getitem__(self, i):
