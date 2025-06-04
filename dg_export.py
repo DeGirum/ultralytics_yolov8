@@ -6,7 +6,7 @@ import argparse
 def parser_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
-    parser.add_argument('--format', type=str, default='tflite', help='export format')
+    parser.add_argument('--format', type=str, default='onnx', help='export format')
     parser.add_argument('--quantize', action='store_true', help='int8 export')
     parser.add_argument('--data', type=str, default='', help='dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
