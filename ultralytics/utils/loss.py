@@ -624,32 +624,81 @@ class v8ClassificationLoss:
 class v8MultiLabelClassificationLoss:
     """Criterion class for computing multi-label classification losses."""
 
-    def __call__(self, preds, batch, weights=None):
+    def __init__(self, is_binary=True):
+        """Initialize the v8MultiLabelClassificationLoss class."""
+        self.is_binary = is_binary
+        if is_binary:
+            self.weight_pos, self.weight_neg = self._get_weights_peta()
+        else:
+            self.criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.2)
+
+    def __call__(self, preds, batch):
+        """Calculate and return the multi-label classification loss."""
+        if self.is_binary:
+            return self._call_binary(preds, batch)
+        else:
+            return self._call_non_binary(preds, batch)
+
+    def _call_non_binary(self, preds, batch):
+        """
+        Args:
+            preds: Tensor of shape [B, nl * nc] or [B, nl, nc]
+            batch: dict with key 'cls', shape [B, nl], with target class indices
+        Returns:
+            loss: scalar
+            loss_items: detached scalar (for logging)
+        """
+        preds = preds[1] if isinstance(preds, (list, tuple)) else preds
+        targets = batch["cls"].long()  # [B, nl]
+        B = preds.shape[0]
+
+        if preds.ndim == 2:
+            N = preds.shape[1]
+            nl = targets.shape[1]
+            assert N % nl == 0, "Predictions do not align with target outputs."
+            nc = N // nl
+            preds = preds.view(B, nl, nc)
+        elif preds.ndim == 3:
+            nl = preds.shape[1]
+            nc = preds.shape[2]
+        else:
+            raise ValueError("Invalid prediction shape.")
+
+        # Flatten for loss
+        preds_flat = preds.view(B * nl, nc)
+        targets_flat = targets.view(B * nl)
+
+        loss = self.criterion(preds_flat, targets_flat)
+        loss_items = loss.detach()
+        return loss, loss_items
+
+    def _get_weights_peta():
+        """Get weights for PETA dataset based on attribute partitioning."""
+        weight_pos = []
+        weight_neg = []
         with open("/data1/ml_data/pedestrian_attributes/peta_partition.pkl", "rb") as f:
             partition = pickle.load(f)
         with open("/data1/ml_data/pedestrian_attributes/peta_dataset.pkl", "rb") as f:
             dataset = pickle.load(f)
         rate = np.array(partition['weight_trainval'][0])
         rate = rate[dataset['selected_attribute']].tolist()
-        num_att = batch["cls"].shape[1]
-        if len(rate) != num_att:
-            print ("the length of rate should be equal to %d" % (num_att))
-            raise ValueError
-        weight_pos = []
-        weight_neg = []
-        for idx, v in enumerate(rate):
+        for v in rate:
             weight_pos.append(math.exp(1.0 - v))
             weight_neg.append(math.exp(v))
 
+        return weight_pos, weight_neg
+
+    def _call_binary(self, preds, batch, weights=None):
+        """Calculate and return the multi-label classification loss."""
         weights = torch.zeros(batch["cls"].shape)
 
         for i in range(batch["cls"].shape[0]):   # Loop over batch
             for j in range(batch["cls"].shape[1]):  # Loop over each class
                 # print (batch["cls"].data.cpu()[i, j])
                 if batch["cls"].data.cpu()[i, j] == 0:
-                    weights[i, j] = weight_neg[j]
+                    weights[i, j] = self.weight_neg[j]
                 elif batch["cls"].data.cpu()[i, j] == 1:
-                    weights[i, j] = weight_pos[j]
+                    weights[i, j] = self.weight_pos[j]
                 else:
                     weights[i, j] = 0
 

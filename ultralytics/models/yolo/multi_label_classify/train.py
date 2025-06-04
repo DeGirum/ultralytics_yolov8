@@ -45,7 +45,12 @@ class MultiLabelClassificationTrainer(BaseTrainer):
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Returns a modified PyTorch model configured for training YOLO."""
-        model = MultiLabelClassificationModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1)
+        model = MultiLabelClassificationModel(
+            cfg=cfg,
+            nl=self.data["nl"],  # number of labels, for PETA no = 40
+            nc=self.data.get("nc", 1),
+            verbose=verbose and RANK == -1
+        )
         if weights:
             model.load(weights)
 
@@ -69,12 +74,18 @@ class MultiLabelClassificationTrainer(BaseTrainer):
             ckpt = None
         else:
             ckpt = super().setup_model()
-        MultiLabelClassificationModel.reshape_outputs(self.model, self.data["nc"])
+        self.model.reshape_outputs(self.data["nl"], self.data.get("nc", 1))
         return ckpt
 
     def build_dataset(self, anno_path, mode="train", batch=None):
         """Creates a ClassificationDataset instance given an image path, and mode (train/test etc.)."""
-        return MultiLabelClassificationDataset(anno_path, args=self.args, augment=mode == "train", prefix=mode)
+        return MultiLabelClassificationDataset(
+            anno_path,
+            args=self.args,
+            image_dir=self.data.get("image_dir"),
+            augment=mode == "train",
+            prefix=mode
+        )
 
     def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode="train"):
         """Returns PyTorch DataLoader with transforms to preprocess images for inference."""
@@ -109,8 +120,10 @@ class MultiLabelClassificationTrainer(BaseTrainer):
     def get_validator(self):
         """Returns an instance of ClassificationValidator for validation."""
         self.loss_names = ["loss"]
+        is_binary = self.data.get("nc", 1) == 1  # binary classification if nc == 1
         return yolo.multi_label_classify.MultiLabelClassificationValidator(
-            self.test_loader, self.save_dir, args=copy(self.args), _callbacks=self.callbacks
+            self.test_loader, self.save_dir, args=copy(self.args),
+            _callbacks=self.callbacks, is_binary=is_binary
         )
 
     def label_loss_items(self, loss_items=None, prefix="train"):

@@ -4,7 +4,8 @@
 # Model docs: https://docs.ultralytics.com/models/yolov8
 
 # Parameters
-nc: 40 # number of classes
+nl: 40 # number of labels
+nc: 1  # number of classes
 scales: # model compound scaling constants, i.e. 'model=yolov8n-multi-label-cls.yaml' will call yolov8-multi-label-cls.yaml with scale 'n'
   # [depth, width, max_channels]
   n: [0.33, 0.25, 1024]
@@ -28,4 +29,4 @@ backbone:
 
 # YOLOv8.0n head
 head:
-  - [-1, 1, MultiLabelClassify, [nc]] # MultiLabelClassify
+  - [-1, 1, MultiLabelClassify, [nl, nc]] # MultiLabelClassify
