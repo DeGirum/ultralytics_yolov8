@@ -1030,6 +1030,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
     legacy = True  # backward compatibility for v3/v5/v8/v9 models
     max_channels = float("inf")
     nc, act, scales = (d.get(x) for x in ("nc", "activation", "scales"))
+    nl = d.get("nl", 1)  # number of labels, default to 1 for multi-label classification
     depth, width, kpt_shape = (d.get(x, 1.0) for x in ("depth_multiple", "width_multiple", "kpt_shape"))
     if scales:
         scale = d.get("scale")
