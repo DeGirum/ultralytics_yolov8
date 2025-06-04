@@ -480,59 +480,79 @@ class ClassificationModel(BaseModel):
         """Initialize the loss criterion for the ClassificationModel."""
         return v8ClassificationLoss()
 
+
 class MultiLabelClassificationModel(BaseModel):
     """YOLO model adapted for multi-label classification."""
 
-    def __init__(self, cfg="yolov8n-multi-label-cls.yaml", ch=3, nc=None, verbose=True):
-        """Initialize MultiLabelClassificationModel with YAML config, input channels, and number of classes."""
+    def __init__(self, cfg="yolov8n-multi-label-cls.yaml", ch=3, nl=None, nc=None, verbose=True):
+        """Initialize MultiLabelClassificationModel with YAML config, input channels, number of outputs, and number of classes."""
         super().__init__()
-        self._from_yaml(cfg, ch, nc, verbose)
+        self.is_binary = True  # multi-label classification is binary by default
+        if nc and nc != 1:
+            self.is_binary = False  # multi-label classification is not binary if nc > 1
+        self._from_yaml(cfg, ch, nl, nc, verbose)
 
-    def _from_yaml(self, cfg, ch, nc, verbose):
+    def _reinit_nl_nc(self, nl, nc):
+        """Reinitialize the number of labels (nl) and classes (nc) in the model YAML."""
+        if nl and nl != self.yaml.get("nl", None):
+            LOGGER.info(f"Overriding model.yaml nl={self.yaml['nl']} with nl={nl}")
+            self.yaml["nl"] = nl
+        elif not nl and not self.yaml.get("nl", None):
+            raise ValueError("Number of classes (nl) must be specified in the YAML or function argument.")
+
+        if nc and nc != self.yaml.get("nc", None):
+            LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
+            self.yaml["nc"] = nc
+            self.is_binary = False if nc != 1 else True
+        elif not nc and not self.yaml.get("nc", None):
+            self.yaml["nc"] = 1  # default to 1 class for multi-label classification
+            self.is_binary = True
+            LOGGER.info("Number of classes (nc) not specified, defaulting to 1 for multi-label classification.")
+
+    def _from_yaml(self, cfg, ch, nl, nc, verbose):
         """Load model configuration from YAML and construct model architecture."""
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)
 
         # Set channels and number of classes
         ch = self.yaml["ch"] = self.yaml.get("ch", ch)
-        if nc and nc != self.yaml.get("nc", None):
-            LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
-            self.yaml["nc"] = nc
-        elif not nc and not self.yaml.get("nc", None):
-            raise ValueError("Number of classes (nc) must be specified in the YAML or function argument.")
+        self._reinit_nl_nc(nl, nc)
 
         # Build model
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose)
         self.stride = torch.Tensor([1])
-        self.class_names = {i: f"label_{i}" for i in range(self.yaml["nc"])}  # label-style names for multi-label
+        self.class_names = {i: f"class_{i}" for i in range(self.yaml["nc"])}  # class-style names for multi-label
+        self.label_names = {i: f"label_{i}" for i in range(self.yaml["nl"])}  # label-style names for multi-label
         self.info()
 
-    @staticmethod
-    def reshape_outputs(model, nc):
+    def reshape_outputs(self, nl, nc):
         """Ensure the model output layer matches the number of multi-label classes."""
-        name, m = list((model.model if hasattr(model, "model") else model).named_children())[-1]
+        self._reinit_nl_nc(nl, nc)
+        model = self.model.model if hasattr(self.model, "model") else self.model  # handle TorchVision models
+        name, m = list(model.named_children())[-1]
 
         if isinstance(m, MultiLabelClassify):  # YOLO Classify() head
-            if m.linear.out_features != nc:
-                m.linear = torch.nn.Linear(m.linear.in_features, nc)
+            if m.linear.out_features != nl * nc:
+                m.linear = torch.nn.Linear(m.linear.in_features, nl * nc)
         elif isinstance(m, torch.nn.Linear):  # TorchVision models
-            if m.out_features != nc:
-                setattr(model, name, torch.nn.Linear(m.in_features, nc))
+            if m.out_features != nl * nc:
+                setattr(model, name, torch.nn.Linear(m.in_features, nl * nc))
         elif isinstance(m, torch.nn.Sequential):
             types = [type(x) for x in m]
             if torch.nn.Linear in types:
                 i = len(types) - 1 - types[::-1].index(torch.nn.Linear)
-                if m[i].out_features != nc:
-                    m[i] = torch.nn.Linear(m[i].in_features, nc)
+                if m[i].out_features != nl * nc:
+                    m[i] = torch.nn.Linear(m[i].in_features, nl * nc)
             elif torch.nn.Conv2d in types:
                 i = len(types) - 1 - types[::-1].index(torch.nn.Conv2d)
-                if m[i].out_channels != nc:
+                if m[i].out_channels != nl * nc:
                     m[i] = torch.nn.Conv2d(
-                        m[i].in_channels, nc, m[i].kernel_size, m[i].stride, bias=m[i].bias is not None
+                        m[i].in_channels, nl * nc, m[i].kernel_size, m[i].stride, bias=m[i].bias is not None
                     )
 
     def init_criterion(self):
         """Initialize binary cross entropy loss for multi-label classification."""
-        return v8MultiLabelClassificationLoss()
+        return v8MultiLabelClassificationLoss(is_binary=self.is_binary)
+
 
 class RegressionModel(BaseModel):
     """YOLOv8 regression model."""
@@ -1030,7 +1050,6 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
     base_modules = frozenset(
         {
             Classify,
-            MultiLabelClassify,
             Conv,
             ConvTranspose,
             GhostConv,
@@ -1112,7 +1131,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                 legacy = False
                 if scale in "mlx":
                     args[3] = True
-        elif m is AIFI:
+        elif m in (AIFI, MultiLabelClassify):
             args = [ch[f], *args]
         elif m in frozenset({HGStem, HGBlock}):
             c1, cm, c2 = ch[f], args[0], args[1]
