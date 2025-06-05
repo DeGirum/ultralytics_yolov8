@@ -117,16 +117,17 @@ class MultiLabelClassificationValidator(BaseValidator):
 
         # Optional: per-output (per-label) accuracy
         if getattr(self.args, "verbose", False) and not getattr(self, "training", False) and getattr(self, "nl", 1) > 1:
-            per_label_fmt = "%22s%11.3f"
-            LOGGER.info(per_label_fmt % ("label", "acc"))
+            value_fmt = "%22s%11.3f"
+            label_fmt = "%22s%11s"
+            LOGGER.info(label_fmt % ("label", "acc"))
             for i, acc in enumerate(self.metrics.label_acc.tolist()):
                 label_name = self.labels[i] if hasattr(self, "labels") and i < len(self.labels) else f"Label {i}"
-                LOGGER.info(per_label_fmt % (label_name, acc))
+                LOGGER.info(value_fmt % (label_name, acc))
 
-            LOGGER.info(per_label_fmt % ("class", "acc"))
+            LOGGER.info(label_fmt % ("class", "acc"))
             for i, acc in enumerate(self.metrics.per_class_acc.tolist()):
                 class_name = self.names[i] if hasattr(self, "names") and i < len(self.names) else f"Class {i}"
-                LOGGER.info(per_label_fmt % (class_name, acc))
+                LOGGER.info(value_fmt % (class_name, acc))
 
     def plot_val_samples(self, batch, ni):
         """Plot validation image samples."""
