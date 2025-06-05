@@ -1249,7 +1249,7 @@ class MultiLabelClassifyMetrics(SimpleClass):
         self.top1_acc = 0.0
         self.topk_acc = 0.0
         self.label_acc = []
-        self.per_class_acc = {}
+        self.class_acc = []
         self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
         self.task = "multi_label_classify"
 
@@ -1281,7 +1281,7 @@ class MultiLabelClassifyMetrics(SimpleClass):
         self.topk_acc = topk_correct.float().mean().item()
 
         # Per-class accuracy
-        self.per_class_acc = {}
+        self.class_acc = [0.0] * nc
         flat_preds = top1.view(-1)
         flat_targets = targets.view(-1)
         for c in range(nc):
@@ -1289,7 +1289,7 @@ class MultiLabelClassifyMetrics(SimpleClass):
             correct_for_class = (flat_preds[mask] == c).sum().item()
             total_for_class = mask.sum().item()
             acc = correct_for_class / total_for_class if total_for_class > 0 else float("nan")
-            self.per_class_acc[c] = acc
+            self.class_acc[c] = acc
 
     def _process_binary(self, targets, pred):
         """Target classes and predicted classes."""
@@ -1353,15 +1353,6 @@ class MultiLabelClassifyMetrics(SimpleClass):
             "metrics/top1_acc",
             f"metrics/top{self.topk}_acc"
         ]
-
-    @property
-    def per_label_acc(self):
-        """Return per-label accuracy (binary) or per-output accuracy (multiclass)."""
-        return self.label_acc
-
-    @property
-    def per_class_accuracy(self):
-        return self.per_class_acc
 
     @property
     def curves(self):

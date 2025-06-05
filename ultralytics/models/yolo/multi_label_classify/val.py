@@ -125,7 +125,7 @@ class MultiLabelClassificationValidator(BaseValidator):
                 LOGGER.info(value_fmt % (label_name, acc))
 
             LOGGER.info(label_fmt % ("class", "acc"))
-            for i, acc in enumerate(self.metrics.per_class_acc.tolist()):
+            for i, acc in enumerate(self.metrics.class_acc):
                 class_name = self.names[i] if hasattr(self, "names") and i < len(self.names) else f"Class {i}"
                 LOGGER.info(value_fmt % (class_name, acc))
 
