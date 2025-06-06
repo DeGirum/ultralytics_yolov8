@@ -1556,7 +1556,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                     args.extend((True, 1.2))
             if m is C2fCIB:
                 legacy = False
-        elif m is (AIFI, MultiLabelClassify):
+        elif m in (AIFI, MultiLabelClassify):
             args = [ch[f], *args]
         elif m in frozenset({HGStem, HGBlock}):
             c1, cm, c2 = ch[f], args[0], args[1]
