@@ -363,12 +363,13 @@ class MultiLabelClassify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         x = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))  # logits
-        if self.nc != 1:
+        non_binary = hasattr(self, "nc") and self.nc != 1
+        if non_binary:
             x = x.view(x.shape[0], self.nl, self.nc)
         if self.training:
             return x
 
-        y = x.sigmoid() if self.nc == 1 else x.softmax(2)
+        y = x.softmax(2) if non_binary else x.sigmoid()
         return y if self.export else (y, x)
 
 
