@@ -42,6 +42,7 @@ class MultiLabelClassificationTrainer(BaseTrainer):
     def set_model_attributes(self):
         """Set the YOLO model's class names from the loaded dataset."""
         self.model.names = self.data["names"]
+        self.model.label_names = self.data["label_names"]  # attach label names to model
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Returns a modified PyTorch model configured for training YOLO."""

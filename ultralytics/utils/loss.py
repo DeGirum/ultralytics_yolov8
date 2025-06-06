@@ -628,7 +628,7 @@ class v8MultiLabelClassificationLoss:
         """Initialize the v8MultiLabelClassificationLoss class."""
         self.is_binary = is_binary
         if is_binary:
-            self.weight_pos, self.weight_neg = self._get_weights_peta()
+            self.weight_pos, self.weight_neg = v8MultiLabelClassificationLoss.get_weights_peta()
         else:
             self.criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.2)
 
@@ -672,7 +672,8 @@ class v8MultiLabelClassificationLoss:
         loss_items = loss.detach()
         return loss, loss_items
 
-    def _get_weights_peta():
+    @staticmethod
+    def get_weights_peta():
         """Get weights for PETA dataset based on attribute partitioning."""
         weight_pos = []
         weight_neg = []
@@ -705,7 +706,7 @@ class v8MultiLabelClassificationLoss:
         """Compute the multi-label classification loss between predictions and true labels."""
         preds = preds[1] if isinstance(preds, (list, tuple)) else preds
         # Use BCEWithLogitsLoss, as it is designed for multi-label problems
-        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"], weight=weights.cuda())*num_att
+        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"].float(), weight=weights.cuda())
         loss_items = loss.detach()  # Return loss value without tracking the gradients
         return loss, loss_items
 
