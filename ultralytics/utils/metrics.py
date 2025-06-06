@@ -1324,7 +1324,7 @@ class MultiLabelClassifyMetrics(SimpleClass):
         label_f1 = 2 * label_prec * label_pos_recall / (label_prec + label_pos_recall + eps)
 
         label_accuracy = (true_pos + true_neg) / (gt_pos + gt_neg + eps)
-        self.label_acc = label_accuracy.tolist()
+        self.label_acc = label_accuracy
         self.mean_acc = label_ma.mean().item()
         self.mean_f1_score = label_f1.mean().item()
 

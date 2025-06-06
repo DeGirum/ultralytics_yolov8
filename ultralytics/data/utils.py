@@ -504,9 +504,11 @@ def check_multi_label_cls_dataset(dataset, autodownload=True):
                     emojis(f"{dataset} '{k}:' key missing ❌.\n'train' and 'val' are required in all data YAMLs."))
             LOGGER.info("WARNING ⚠️ renaming data YAML 'validation' key to 'val' to match YOLO format.")
             data["val"] = data.pop("validation")  # replace "validation" key with "val" key
-    
-    data["nc"] = len(data["names"])
-    data["names"] = check_class_names(data["names"])
+
+    names = data.get("names", ["Exist"])
+    data["nc"] = len(names)
+    data["nl"] = len(data["label_names"])
+    data["names"] = check_class_names(names)
 
     # Resolve paths
     path = Path(extract_dir or data.get("path"))  # dataset root
