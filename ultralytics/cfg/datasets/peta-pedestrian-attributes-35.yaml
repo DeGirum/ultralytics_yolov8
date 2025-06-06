@@ -16,7 +16,9 @@ val: val_peta_attributes_35_annotations.csv
 # train: train_peta_attributes_35_person_crops_annotations.csv
 # val: val_peta_attributes_35_person_crops_annotations.csv
 
-names:
+nc: 1 # Number of classes, set to 1 for single-label classification
+
+label_names:
   0: personalLess30
   1: personalLess45  
   2: personalLess60  
