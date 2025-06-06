@@ -26,26 +26,29 @@ class MultiLabelClassificationValidator(BaseValidator):
         ```
     """
 
-    def __init__(self, dataloader=None, save_dir=None, pbar=None, args=None, _callbacks=None):
+    def __init__(self, dataloader=None, save_dir=None, pbar=None, args=None, _callbacks=None, is_binary=True):
         """Initializes MultiLabelClassificationValidator instance with args, dataloader, save_dir, and progress bar."""
         super().__init__(dataloader, save_dir, pbar, args, _callbacks)
         self.targets = None
         self.pred = None
         self.args.task = "multi_label_classify"
-        self.metrics = MultiLabelClassifyMetrics()
+        self.metrics = MultiLabelClassifyMetrics(is_binary=is_binary)
+        self.is_binary = is_binary  # True for binary classification, False for multi-class classification
 
-    def get_desc(self):
-        """Returns a formatted string summarizing multi label classification metrics."""
-        return ("%22s" * 3) % (
-            "classes",
-            "mean_acc",
-            "mean_f1_score"
-        )
+    # def get_desc(self):
+    #     """Returns a formatted string summarizing multi label classification metrics."""
+    #     return ("%22s" * 3) % (
+    #         "labels",
+    #         "mean_acc",
+    #         "mean_f1_score"
+    #     )
 
     def init_metrics(self, model):
         """Initialize class names, and mean accuracy."""
+        self.labels = model.label_names if hasattr(model, "label_names") else model.model.label_names
         self.names = model.names
-        self.nc = len(model.names)
+        self.nl = len(self.labels)
+        self.nc = len(self.names)
         self.pred = []
         self.targets = []
 
@@ -57,15 +60,18 @@ class MultiLabelClassificationValidator(BaseValidator):
         return batch
 
     def update_metrics(self, preds, batch):
-        """Updates running metrics with model predictions and batch targets."""
-        binary_preds = (preds > 0.5).int().cpu()
+        """Updates metrics with predictions and targets from the current batch."""
+        if self.is_binary:
+            preds = (preds > 0.5).int().cpu()
+        else:
+            # Expecting preds of shape [B, nl * nc] or [B, nl, nc]
+            if preds.ndim == 2:
+                preds = preds.view(-1, self.nl, self.nc)
+            preds = preds.cpu()
+            # preds = preds.argmax(dim=2).cpu()  # [B, nl]
 
-        # Collect targets
-        binary_targets = batch["cls"].int().cpu()
-
-        # Append to lists for metric calculation later
-        self.pred.append(binary_preds)
-        self.targets.append(binary_targets)
+        self.targets.append(batch["cls"].int().cpu())
+        self.pred.append(preds)
 
     def finalize_metrics(self, *args, **kwargs):
         """Finalizes metrics of the model such as speed."""
@@ -91,34 +97,63 @@ class MultiLabelClassificationValidator(BaseValidator):
         return build_dataloader(dataset, batch_size, self.args.workers, rank=-1)
 
     def print_results(self):
-        """Prints evaluation metrics for multi label classification model."""
-        pf = "%22s" + "%22.3g" * len(self.metrics.keys)  # print format
-        LOGGER.info(pf % ("all", self.metrics.mean_acc, self.metrics.mean_f1_score))
-        if self.args.verbose and not self.training and self.nc > 1:
-            for i, c in enumerate(self.metrics.per_label_acc):
-                pf = "%22s%11.3f"
-                LOGGER.info(pf % (self.names[i], c))
-            
+        """Prints evaluation metrics for multi-output multi-class classification model."""
+        # Gather scalar metrics
+        metric_values = [
+            self.metrics.mean_acc,
+            self.metrics.mean_f1_score,
+            self.metrics.sequence_acc,
+            self.metrics.top1_acc,
+            self.metrics.topk_acc,
+        ]
+
+        # Print header row with metric keys
+        header_fmt = "%22s" + "%22s" * len(self.metrics.keys)
+        LOGGER.info(header_fmt % ("all", *self.metrics.keys))
+
+        # Print actual metric values
+        value_fmt = "%22s" + "%22.3g" * len(metric_values)
+        LOGGER.info(value_fmt % ("all", *metric_values))
+
+        # Optional: per-output (per-label) accuracy
+        if getattr(self.args, "verbose", False) and not getattr(self, "training", False) and getattr(self, "nl", 1) > 1:
+            value_fmt = "%22s%11.3f"
+            label_fmt = "%22s%11s"
+            LOGGER.info(label_fmt % ("label", "acc"))
+            for i, acc in enumerate(self.metrics.label_acc.tolist()):
+                label_name = self.labels[i] if hasattr(self, "labels") and i < len(self.labels) else f"Label {i}"
+                LOGGER.info(value_fmt % (label_name, acc))
+
+            if self.metrics.class_acc:
+                LOGGER.info(label_fmt % ("class", "acc"))
+                for i, acc in enumerate(self.metrics.class_acc):
+                    class_name = self.names[i] if hasattr(self, "names") and i < len(self.names) else f"Class {i}"
+                    LOGGER.info(value_fmt % (class_name, acc))
+
     def plot_val_samples(self, batch, ni):
         """Plot validation image samples."""
-        pass
-        # plot_images(
-        #     images=batch["img"],
-        #     batch_idx=torch.arange(len(batch["img"])),
-        #     cls=batch["cls"].view(-1),  # warning: use .view(), not .squeeze() for Classify models
-        #     fname=self.save_dir / f"val_batch{ni}_labels.jpg",
-        #     names=self.names,
-        #     on_plot=self.on_plot,
-        # )
+        plot_images(
+            images=batch["img"],
+            batch_idx=torch.arange(len(batch["img"])),
+            cls=batch["cls"],  # warning: use .view(), not .squeeze() for Classify models
+            fname=self.save_dir / f"val_batch{ni}_labels.jpg",
+            names=self.names,
+            on_plot=self.on_plot,
+        )
 
     def plot_predictions(self, batch, preds, ni):
-        """Plots predicted bounding boxes on input images and saves the result."""
-        pass
-        # plot_images(
-        #     batch["img"],
-        #     batch_idx=torch.arange(len(batch["img"])),
-        #     cls=preds,
-        #     fname=self.save_dir / f"val_batch{ni}_pred.jpg",
-        #     names=self.names,
-        #     on_plot=self.on_plot,
-        # )  # pred
+        if self.is_binary:
+            thresholded_preds = (preds > 0.5).int()
+        else:
+            if preds.ndim == 2:
+                preds = preds.view(-1, self.nl, self.nc)
+            thresholded_preds = preds.argmax(dim=2)
+
+        plot_images(
+            batch["img"],
+            batch_idx=torch.arange(len(batch["img"])),
+            cls=thresholded_preds,
+            fname=self.save_dir / f"val_batch{ni}_pred.jpg",
+            names=self.names,
+            on_plot=self.on_plot,
+        )

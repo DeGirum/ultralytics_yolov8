@@ -78,7 +78,7 @@ from ultralytics.data.utils import check_cls_dataset, check_det_dataset
 from ultralytics.data.utils import check_regress_dataset
 from ultralytics.nn.autobackend import check_class_names, default_class_names
 from ultralytics.nn.modules import C2f, Classify, Detect, Pose, RTDETRDecoder
-from ultralytics.nn.modules import Regress6
+from ultralytics.nn.modules import Regress6, MultiLabelClassify
 from ultralytics.nn.tasks import ClassificationModel, DetectionModel, SegmentationModel, WorldModel
 from ultralytics.utils import (
     ARM64,
@@ -402,7 +402,7 @@ class Exporter:
                 elif not is_tf_format:
                     # EdgeTPU does not support FlexSplitV while split provides cleaner ONNX graph
                     m.forward = m.forward_split
-            elif isinstance(m, Regress6):
+            elif isinstance(m, (Regress6, MultiLabelClassify)):
                 m.export = True
 
             if isinstance(m, Detect) and imx:

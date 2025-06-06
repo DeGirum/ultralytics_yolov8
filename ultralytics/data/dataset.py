@@ -840,7 +840,7 @@ class MultiLabelClassificationDataset:
     Each line: <image_name> <label_1> <label_2> ... <label_n>
     """
 
-    def __init__(self, anno_path, args, augment=False, prefix=""):
+    def __init__(self, anno_path, args, image_dir=None, augment=False, prefix=""):
         """
         Args:
             anno_path (str or Path): Path to the .csv file containing image filenames and label vectors.
@@ -849,10 +849,11 @@ class MultiLabelClassificationDataset:
             prefix (str): Optional prefix for cache/logging/debugging.
         """
         import torchvision  # scope for faster 'import ultralytics'
-
+        if image_dir is None:
+            image_dir = Path(anno_path).parent
         # Base class assigned as attribute rather than used as base class to allow for scoping slow torchvision import
-        self.base = torchvision.datasets.vision.VisionDataset(root=anno_path)        
-        self.samples = self.get_samples(anno_path)
+        self.base = torchvision.datasets.vision.VisionDataset(root=image_dir)
+        self.samples = self.get_samples(anno_path, image_dir)
         self.root = self.base.root
         if augment and args.fraction < 1.0:
             self.samples = self.samples[: round(len(self.samples) * args.fraction)]
@@ -879,9 +880,10 @@ class MultiLabelClassificationDataset:
                 hsv_h=args.hsv_h,
                 hsv_s=args.hsv_s,
                 hsv_v=args.hsv_v,
+                stretch=True
             )
             if augment
-            else classify_transforms(size=args.imgsz)
+            else classify_transforms(size=args.imgsz, crop_fraction=args.crop_fraction, stretch=True)
         )
 
     def __getitem__(self, i):
@@ -903,24 +905,24 @@ class MultiLabelClassificationDataset:
     def __len__(self):
         return len(self.samples)
 
-    def get_samples(self, anno_path):
+    def get_samples(self, anno_path, image_dir):
         # Check that csv path exists
         assert os.path.exists(anno_path), "Path to annotations is invalid"
-
+        # Check that image directory exists
+        assert os.path.exists(image_dir), "Path to image directory is invalid"
         samples = []
-        parent_path = os.path.split(anno_path)[0]
 
         # Read CSV file
         df = pd.read_csv(anno_path, sep=" ")
 
         # Expect first column to be image filenames, rest to be labels
         for _, row in df.iterrows():
-            img_file = os.path.join(parent_path, row.iloc[0])
-            labels = row[1:].astype(np.float32).to_numpy()
+            img_file = os.path.join(image_dir, row.iloc[0])
+            labels = row[1:].astype(np.uint8).to_numpy()
             samples.append([img_file, labels])
 
         return samples
-    
+
     def verify_images(self):
         desc = f"{self.prefix}Scanning {self.root}..."
         path = Path(self.root).with_suffix(".cache")  # *.cache file path

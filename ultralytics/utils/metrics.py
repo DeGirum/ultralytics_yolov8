@@ -1274,14 +1274,64 @@ class MultiLabelClassifyMetrics(SimpleClass):
         process(targets, pred): Processes the targets and predictions to compute classification metrics.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, is_binary: bool = True, topk: int = 3) -> None:
         """Initialize a MultiLabelClassifyMetrics instance."""
+        self.is_binary = is_binary
+        self.topk = topk
+        self.mean_acc = 0.0
+        self.mean_f1_score = 0.0
+        self.sequence_acc = 0.0
+        self.top1_acc = 0.0
+        self.topk_acc = 0.0
+        self.label_acc = []
+        self.class_acc = []
         self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
         self.task = "multi_label_classify"
 
     def process(self, targets, pred):
+        if isinstance(pred, list):
+            pred = torch.cat(pred)
+        if isinstance(targets, list):
+            targets = torch.cat(targets)
+
+        if self.is_binary:
+            self._process_binary(targets, pred)
+        else:
+            self._process_multiclass(targets, pred)
+
+    def _process_multiclass(self, targets, pred):
+        B, nl, nc = pred.shape
+        top1 = pred.argmax(dim=2)  # shape [B, nl]
+        correct = (top1 == targets)  # shape [B, nl]
+
+        # Per-output accuracy
+        self.label_acc = correct.sum(dim=0) / B
+        self.mean_acc = self.label_acc.mean().item()
+        self.sequence_acc = (correct.sum(dim=1) == nl).float().mean().item()
+        self.top1_acc = correct.float().mean().item()
+
+        # Top-k accuracy
+        topk_preds = torch.topk(pred, k=self.topk, dim=2).indices
+        topk_correct = (topk_preds == targets.unsqueeze(2)).any(dim=2)
+        self.topk_acc = topk_correct.float().mean().item()
+
+        # Per-class accuracy
+        self.class_acc = [0.0] * nc
+        flat_preds = top1.view(-1)
+        flat_targets = targets.view(-1)
+        for c in range(nc):
+            mask = flat_targets == c
+            correct_for_class = (flat_preds[mask] == c).sum().item()
+            total_for_class = mask.sum().item()
+            acc = correct_for_class / total_for_class if total_for_class > 0 else float("nan")
+            self.class_acc[c] = acc
+
+    def _process_binary(self, targets, pred):
         """Target classes and predicted classes."""
-        pred, targets = torch.cat(pred), torch.cat(targets)
+        if isinstance(pred, list):
+            pred = torch.cat(pred)
+        if isinstance(targets, list):
+            targets = torch.cat(targets)
 
         eps = 1e-20
         # Convert to float for arithmetic
@@ -1309,24 +1359,35 @@ class MultiLabelClassifyMetrics(SimpleClass):
         label_f1 = 2 * label_prec * label_pos_recall / (label_prec + label_pos_recall + eps)
 
         label_accuracy = (true_pos + true_neg) / (gt_pos + gt_neg + eps)
-        self.label_acc = label_accuracy.tolist()
+        self.label_acc = label_accuracy
         self.mean_acc = label_ma.mean().item()
         self.mean_f1_score = label_f1.mean().item()
- 
-    @property
-    def results_dict(self):
-        """Returns a dictionary with model's performance metrics and fitness score."""
-        return dict(zip(self.keys, [self.mean_acc, self.mean_f1_score]))
 
     @property
-    def per_label_acc(self):
-        """Return the accuracy of each label for a multi label classification model"""
-        return self.label_acc
+    def fitness(self):
+        return self.mean_acc
+
+    @property
+    def results_dict(self):
+        base = {
+            "metrics/mean_acc": self.mean_acc,
+            "metrics/mean_f1_score": self.mean_f1_score,
+            "metrics/sequence_acc": self.sequence_acc,
+            "metrics/top1_acc": self.top1_acc,
+            f"metrics/top{self.topk}_acc": self.topk_acc,
+            "fitness": self.fitness
+        }
+        return base
 
     @property
     def keys(self):
-        """Returns a list of keys for the results_dict property."""
-        return ["metrics/mean_acc","metrics/mean_f1_score"]
+        return [
+            "metrics/mean_acc",
+            "metrics/mean_f1_score",
+            "metrics/sequence_acc",
+            "metrics/top1_acc",
+            f"metrics/top{self.topk}_acc"
+        ]
 
     @property
     def curves(self):

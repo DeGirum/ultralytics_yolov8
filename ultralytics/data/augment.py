@@ -2554,7 +2554,8 @@ def classify_transforms(
     mean=DEFAULT_MEAN,
     std=DEFAULT_STD,
     interpolation="BILINEAR",
-    crop_fraction=None,
+    crop_fraction: float = DEFAULT_CROP_FRACTION,
+    stretch: bool = False
 ):
     """
     Creates a composition of image transforms for classification tasks.
@@ -2589,13 +2590,19 @@ def classify_transforms(
         )
 
     # Aspect ratio is preserved, crops center within image, no borders are added, image is lost
-    if scale_size[0] == scale_size[1]:
+    if scale_size[0] == scale_size[1] and not stretch:
         # Simple case, use torchvision built-in Resize with the shortest edge mode (scalar size arg)
         tfl = [T.Resize(scale_size[0], interpolation=getattr(T.InterpolationMode, interpolation))]
     else:
         # Resize the shortest edge to matching target dim for non-square target
-        tfl = [T.Resize(scale_size)]
-    tfl += [T.CenterCrop(size), T.ToTensor(), T.Normalize(mean=torch.tensor(mean), std=torch.tensor(std))]
+        tfl = [T.Resize(scale_size, interpolation=getattr(T.InterpolationMode, interpolation))]
+    tfl.extend(
+        [
+            T.CenterCrop(size),
+            T.ToTensor(),
+            T.Normalize(mean=torch.tensor(mean), std=torch.tensor(std)),
+        ]
+    )
     return T.Compose(tfl)
 
 
@@ -2615,6 +2622,7 @@ def classify_augmentations(
     force_color_jitter=False,
     erasing=0.0,
     interpolation="BILINEAR",
+    stretch=False,
 ):
     """
     Creates a composition of image augmentation transforms for classification tasks.
@@ -2653,7 +2661,11 @@ def classify_augmentations(
     scale = tuple(scale or (0.08, 1.0))  # default imagenet scale range
     ratio = tuple(ratio or (3.0 / 4.0, 4.0 / 3.0))  # default imagenet ratio range
     interpolation = getattr(T.InterpolationMode, interpolation)
-    primary_tfl = [T.RandomResizedCrop(size, scale=scale, ratio=ratio, interpolation=interpolation)]
+    if stretch:
+        primary_tfl = [T.Resize((size, size), interpolation=interpolation)]
+    else:
+        primary_tfl = [T.RandomResizedCrop(size, scale=scale, ratio=ratio, interpolation=interpolation)]
+
     if hflip > 0.0:
         primary_tfl.append(T.RandomHorizontalFlip(p=hflip))
     if vflip > 0.0:
