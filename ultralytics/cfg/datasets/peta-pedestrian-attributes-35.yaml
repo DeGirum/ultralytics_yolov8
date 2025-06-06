@@ -1,18 +1,24 @@
 # PETA pedestrian dataset for pedestrian attributes
 
-# Original PETA dataset
+# Original PETA dataset (60:40 split)
 
-# path: /data1/ml_data/pedestrian_attributes/peta_dataset
-# train: /data1/ml_data/pedestrian_attributes/peta_dataset/train_peta_attributes_35_annotations.csv
-# val: /data1/ml_data/pedestrian_attributes/peta_dataset/val_peta_attributes_35_annotations.csv
+path: /data1/ml_data/pedestrian_attributes/images
+train: train_peta_attributes_35_annotations.csv
+val: val_peta_attributes_35_annotations.csv
 
+# Original PETA dataset (80:20 split)
+# path: /data1/ml_data/pedestrian_attributes/images
+# train: train_annotations_35.csv
+# val: val_annotations_35.csv
 
 # Person crops using yolov8n person detection model with an expansion factor of 2 and aspect ratio 1:2
-path: /data1/ml_data/pedestrian_attributes/peta_person_crops_expansion_factor_2
-train: train_peta_attributes_35_person_crops_annotations.csv
-val: val_peta_attributes_35_person_crops_annotations.csv
+# path: /data1/ml_data/pedestrian_attributes/peta_person_crops_expansion_factor_2
+# train: train_peta_attributes_35_person_crops_annotations.csv
+# val: val_peta_attributes_35_person_crops_annotations.csv
 
-names:
+nc: 1 # Number of classes, set to 1 for single-label classification
+
+label_names:
   0: personalLess30
   1: personalLess45  
   2: personalLess60  

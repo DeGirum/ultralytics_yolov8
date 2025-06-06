@@ -693,10 +693,14 @@ def plot_images(
         x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
         annotator.rectangle([x, y, x + w, y + h], None, (255, 255, 255), width=2)  # borders
         if paths:
-            annotator.text([x + 5, y + 5], text=Path(paths[i]).name[:40], txt_color=(220, 220, 220))  # filenames
+            annotator.text([x + 5, y + 5], text=Path(paths[i]).name[:40], txt_color=(220, 220, 220))  # filenames         
         if len(cls) > 0:
             idx = batch_idx == i
-            classes = cls[idx].astype("int")
+            if cls.ndim == 2:
+                classes = np.where(cls[idx][0] == 1)[0]  # get indices of active labels
+            else:
+                classes = cls[idx].astype("int")
+
             labels = confs is None
 
             if len(bboxes):
@@ -721,11 +725,14 @@ def plot_images(
                         annotator.box_label(box, label, color=color, rotated=is_obb)
 
             elif len(classes):
-                for c in classes:
-                    color = colors(c)
-                    c = names.get(c, c) if names else c
-                    annotator.text([x, y], f"{c}", txt_color=color, box_color=(64, 64, 64, 128))
-
+                if cls.ndim == 2:
+                    label_str = "\n".join([names.get(c, str(c)) if names else str(c) for c in classes])
+                    annotator.text([x, y], label_str, txt_color=colors(classes[0]), box_style=True)
+                else:
+                    for c in classes:
+                        color = colors(c)
+                        c = names.get(c, c) if names else c
+                        annotator.text((x, y), f"{c}", txt_color=color, box_style=True)
             # Plot keypoints
             if len(kpts):
                 kpts_ = kpts[idx].copy()

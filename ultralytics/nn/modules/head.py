@@ -353,33 +353,41 @@ class Classify(nn.Module):
         y = x.softmax(1)  # get final output
         return y if self.export else (y, x)
 
+
 class MultiLabelClassify(nn.Module):
     """YOLO classification head for multi-label classification."""
 
     export = False  # export mode
 
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):
+    def __init__(self, c1, nl, nc, k=1, s=1, p=None, g=1):
         """Initializes YOLO classification head for multi-label tasks."""
         super().__init__()
+        self.nl = nl  # number of labels
+        self.nc = nc  # number of classes
         c_ = 1280  # efficientnet_b0 size
         self.conv = Conv(c1, c_, k, s, p, g)
         self.pool = nn.AdaptiveAvgPool2d(1)  # to x(b,c_,1,1)
         self.drop = nn.Dropout(p=0.0, inplace=True)
-        self.linear = nn.Linear(c_, c2)  # to x(b,c2)
+        self.linear = nn.Linear(c_, nl * nc)  # to x(b,c2)
 
     def forward(self, x):
         """Forward pass for multi-label classification."""
         if isinstance(x, list):
             x = torch.cat(x, 1)
         x = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))  # logits
+        non_binary = hasattr(self, "nc") and self.nc != 1
+        if non_binary:
+            x = x.view(x.shape[0], self.nl, self.nc)
         if self.training:
-            return x  
-        y = x.sigmoid()  # get final output
+            return x
+
+        y = x.softmax(2) if non_binary else x.sigmoid()
         return y if self.export else (y, x)
-    
+
+
 class Regress(nn.Module):
     """YOLOv8 regression head, i.e. x(b,c1,20,20) to x(b,c2)."""
-    
+
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1):
         """Initializes YOLOv8 regression head with specified input and output channels, kernel size, stride,
         padding, and groups.
