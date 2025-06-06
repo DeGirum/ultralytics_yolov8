@@ -714,7 +714,7 @@ class v8MultiLabelClassificationLoss:
         """Compute the multi-label classification loss between predictions and true labels."""
         preds = preds[1] if isinstance(preds, (list, tuple)) else preds
         # Use BCEWithLogitsLoss, as it is designed for multi-label problems
-        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"].float(), weight=weights.cuda())
+        loss = F.binary_cross_entropy_with_logits(preds, batch["cls"].float(), weight=weights.to(preds.device))
         loss_items = loss.detach()  # Return loss value without tracking the gradients
         return loss, loss_items
 
