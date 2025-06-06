@@ -908,7 +908,7 @@ class MultiLabelClassificationDataset:
     def get_samples(self, anno_path, image_dir):
         # Check that csv path exists
         assert os.path.exists(anno_path), "Path to annotations is invalid"
-        # Cehck that image directory exists
+        # Check that image directory exists
         assert os.path.exists(image_dir), "Path to image directory is invalid"
         samples = []
 
