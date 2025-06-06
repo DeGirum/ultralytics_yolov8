@@ -2554,8 +2554,8 @@ def classify_transforms(
     mean=DEFAULT_MEAN,
     std=DEFAULT_STD,
     interpolation="BILINEAR",
-    crop_fraction: float = DEFAULT_CROP_FRACTION,
-    stretch: bool = False
+    stretch: bool = False,
+    crop_fraction=None,
 ):
     """
     Creates a composition of image transforms for classification tasks.

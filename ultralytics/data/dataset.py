@@ -883,7 +883,7 @@ class MultiLabelClassificationDataset:
                 stretch=True
             )
             if augment
-            else classify_transforms(size=args.imgsz, crop_fraction=args.crop_fraction, stretch=True)
+            else classify_transforms(size=args.imgsz, stretch=True)
         )
 
     def __getitem__(self, i):
@@ -913,7 +913,7 @@ class MultiLabelClassificationDataset:
         samples = []
 
         # Read CSV file
-        df = pd.read_csv(anno_path, sep=" ")
+        df = pd.read_csv(anno_path)
 
         # Expect first column to be image filenames, rest to be labels
         for _, row in df.iterrows():
