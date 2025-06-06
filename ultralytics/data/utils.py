@@ -599,7 +599,8 @@ def check_multi_label_cls_dataset(dataset, autodownload=True):
 
     names = data.get("names", ["Exist"])
     data["nc"] = len(names)
-    data["nl"] = len(data["label_names"])
+    if not data.get("nl"):  # nl is not specifed
+        data["nl"] = len(data["label_names"])
     data["names"] = check_class_names(names)
 
     # Resolve paths
