@@ -75,6 +75,69 @@ class FocalLoss(nn.Module):
             loss *= alpha_factor
         return loss.mean(1).sum()
 
+
+class FocalLossMultiClass(nn.Module):
+    def __init__(self, alpha=None, gamma=2.0, reduction='mean', label_smoothing=0.0):
+        """
+        Focal Loss for multi-class classification with optional class balancing and label smoothing.
+
+        Args:
+            alpha (Tensor or list or None): Class weights (for imbalance), size [num_classes]
+            gamma (float): Focusing parameter
+            reduction (str): 'mean', 'sum', or 'none'
+            label_smoothing (float): How much to smooth labels (0.0 = no smoothing)
+        """
+        super().__init__()
+        self.gamma = gamma
+        self.reduction = reduction
+        self.label_smoothing = label_smoothing
+
+        if alpha is not None:
+            if isinstance(alpha, (list, torch.Tensor)):
+                self.alpha = torch.tensor(alpha, dtype=torch.float32)
+            else:
+                raise ValueError("Alpha must be list, Tensor, or None.")
+        else:
+            self.alpha = None
+
+    def forward(self, input, target):
+        """
+        Args:
+            input: [batch_size, num_classes] logits
+            target: [batch_size] class indices
+        """
+        num_classes = input.size(1)
+
+        # Label smoothing
+        if self.label_smoothing > 0:
+            with torch.no_grad():
+                smooth_target = torch.zeros_like(input).fill_(self.label_smoothing / (num_classes - 1))
+                smooth_target.scatter_(1, target.unsqueeze(1), 1.0 - self.label_smoothing)
+        else:
+            smooth_target = F.one_hot(target, num_classes).float()
+
+        log_probs = F.log_softmax(input, dim=1)
+        probs = log_probs.exp()
+
+        # Focal weight
+        focal_weight = (1.0 - probs).pow(self.gamma)
+
+        # Optional alpha scaling
+        if self.alpha is not None:
+            alpha = self.alpha.to(input.device)
+            alpha_weight = alpha[target].unsqueeze(1)
+            focal_weight = focal_weight * alpha_weight
+
+        loss = -smooth_target * focal_weight * log_probs
+        loss = loss.sum(dim=1)
+
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        return loss
+
+
 class BCEWithLogitsLoss(nn.Module):
     """Criterion class for computing BCEWithLogitsLoss during training"""
 
@@ -638,6 +701,7 @@ class v8MultiLabelClassificationLoss:
         if is_binary:
             self.weight_pos, self.weight_neg = v8MultiLabelClassificationLoss.get_weights_peta()
         else:
+            # self.criterion = FocalLossMultiClass(label_smoothing=0.2)
             self.criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.2)
 
     def __call__(self, preds, batch):
