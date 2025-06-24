@@ -519,7 +519,8 @@ def check_multi_label_det_dataset(dataset, autodownload=True):
             if len(data["label_class_names"]) != sum(data["nc"]):
                 raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'sum(nc): {sum(data['nc'])}' must match."))
 
-    data["names"] = check_class_names(data["label_class_names"])
+    label_class_names = check_class_names(data["label_class_names"])
+    classes_for_all_labels = len(set(data["nc"])) == 1
     
     def flat_index(indices, strides):
         return sum(i * s for i, s in zip(indices, strides))
@@ -535,10 +536,10 @@ def check_multi_label_det_dataset(dataset, autodownload=True):
     
     for combo in itertools.product(*[range(x) for x in reversed(data["nc"])]):
         per_label_idx = tuple(reversed(combo))
-        if len(set(data["nc"])) == 1:
-            label = "".join([data["names"][pli] for pli in per_label_idx])
+        if classes_for_all_labels:
+            label = "".join([label_class_names[pli] for pli in per_label_idx])
         else:
-            label = ", ".join([data["names"][idx_offsets[i] + pli] for i, pli in enumerate(per_label_idx)])
+            label = ", ".join([label_class_names[idx_offsets[i] + pli] for i, pli in enumerate(per_label_idx)])
         class_names[flat_index(per_label_idx, idx_strides)] = label
     
     data["names"] = class_names
