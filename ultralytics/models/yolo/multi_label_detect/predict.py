@@ -59,21 +59,25 @@ class MultiLabelDetectionPredictor(DetectionPredictor):
         if self.separate_outputs:  # Quant friendly export with separated outputs
             preds = decode_bbox(preds, img.shape, self.device)
 
-        box, prob = preds.split((4, self.nc), dim=-1)
-        joint_prob = torch.empty((*(prob.shape[:-1]), math.prod(self.nc_per_label)))
+        nc_per_label = self.model.nc_per_label if hasattr(self.model, "nc_per_label") else self.model.model.nc_per_label
+        nc = sum(nc_per_label)
+        preds = preds[0].permute(0, 2, 1)
+        box, prob = preds.split((4, nc), dim=-1)
+        joint_prob = torch.empty((*(prob.shape[:-1]), math.prod(nc_per_label))).to(box.device)
 
         def flat_index(indices, strides):
             return sum(i * s for i, s in zip(indices, strides))
 
         idx_strides = [1]
         idx_offsets = [0]
-        for b in self.nc_per_label[:-1]:
+        for b in nc_per_label[:-1]:
             idx_strides.append(idx_strides[-1] * b)
             idx_offsets.append(idx_offsets[-1] + b)
 
-        for combo in itertools.product(*[range(x) for x in reversed(self.nc_per_label)]):
+        for combo in itertools.product(*[range(x) for x in reversed(nc_per_label)]):
             per_label_idx = tuple(reversed(combo))
-            joint_prob[:, :, flat_index(per_label_idx, idx_strides)] = torch.prod(prob[:, :, [i + o for i, o in zip(per_label_idx, idx_offsets)]], dim=-1, keepdim=True)
+            flat_idx = flat_index(per_label_idx, idx_strides)
+            joint_prob[:, :, flat_idx:flat_idx + 1] = torch.prod(prob[:, :, [i + o for i, o in zip(per_label_idx, idx_offsets)]], dim=-1, keepdim=True)
         
         preds = torch.cat([box, joint_prob], dim=-1)
 
