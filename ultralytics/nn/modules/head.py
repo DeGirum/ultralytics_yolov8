@@ -199,6 +199,11 @@ class Detect(nn.Module):
         i = torch.arange(batch_size)[..., None]  # batch indices
         return torch.cat([boxes[i, index // nc], scores[..., None], (index % nc)[..., None].float()], dim=-1)
 
+class MultiLabelDetect(Detect):
+    """YOLO MultiLabelDetect head for multi-label detection models."""
+    def __init__(self, nc=80, ch=()):
+        """Initialize the YOLO multi-label detection layer with specified number of classes and channels."""
+        super().__init__(nc=nc, ch=ch)
 
 class Segment(Detect):
     """YOLO Segment head for segmentation models."""

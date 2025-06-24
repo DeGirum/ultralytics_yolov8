@@ -15,7 +15,7 @@ from ultralytics.nn.tasks import (
     YOLOEModel,
     YOLOESegModel,
 )
-from ultralytics.nn.tasks import RegressionModel, MultiLabelClassificationModel
+from ultralytics.nn.tasks import RegressionModel, MultiLabelClassificationModel, MultiLabelDetectionModel
 from ultralytics.utils import ROOT, YAML
 
 
@@ -68,6 +68,12 @@ class YOLO(Model):
                 "trainer": yolo.multi_label_classify.MultiLabelClassificationTrainer,
                 "validator": yolo.multi_label_classify.MultiLabelClassificationValidator,
                 "predictor": yolo.multi_label_classify.MultiLabelClassificationPredictor,
+            },
+            "multi_label_detect": {
+                "model": MultiLabelDetectionModel,
+                "trainer": yolo.multi_label_detect.MultiLabelDetectionTrainer,
+                "validator": yolo.multi_label_detect.MultiLabelDetectionValidator,
+                "predictor": yolo.multi_label_detect.MultiLabelDetectionPredictor,
             },
             "detect": {
                 "model": DetectionModel,

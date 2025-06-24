@@ -23,8 +23,8 @@ from torch import nn, optim
 
 from ultralytics import __version__
 from ultralytics.cfg import get_cfg, get_save_dir
-from ultralytics.data.utils import check_cls_dataset, check_det_dataset, check_multi_label_cls_dataset
-from ultralytics.data.utils import check_regress_dataset
+from ultralytics.data.utils import check_cls_dataset, check_det_dataset
+from ultralytics.data.utils import check_regress_dataset, check_multi_label_cls_dataset, check_multi_label_det_dataset
 from ultralytics.nn.tasks import attempt_load_one_weight, attempt_load_weights
 from ultralytics.utils import (
     DEFAULT_CFG,
@@ -576,6 +576,8 @@ class BaseTrainer:
                 data = check_cls_dataset(self.args.data)
             elif self.args.task == "multi_label_classify":
                 data = check_multi_label_cls_dataset(self.args.data)
+            elif self.args.task == "multi_label_detect":
+                data = check_multi_label_det_dataset(self.args.data)
             elif self.args.task == "regress":
                 data = check_regress_dataset(self.args.data)
             elif self.args.data.split(".")[-1] in {"yaml", "yml"} or self.args.task in {

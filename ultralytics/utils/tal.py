@@ -414,3 +414,105 @@ def dist2rbox(pred_dist, pred_angle, anchor_points, dim=-1):
     x, y = xf * cos - yf * sin, xf * sin + yf * cos
     xy = torch.cat([x, y], dim=dim) + anchor_points
     return torch.cat([xy, lt + rb], dim=dim)
+
+
+class MultiLabelTaskAlignedAssigner(TaskAlignedAssigner):
+    """Assigns ground-truth objects to multi-label bounding boxes using a task-aligned metric."""
+
+    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=6.0, eps=1e-9):
+        """Initialize a MultiLabelTaskAlignedAssigner object with customizable hyperparameters."""
+        super().__init__(topk, num_classes, alpha, beta, eps)
+        self.bg_idx = sum(num_classes)
+    
+    def absolute_to_per_label_target_labels(self, target_labels):
+        nl = len(self.num_classes)
+        target_labels = target_labels.repeat(1, 1, nl)
+        per_label_classes_tensor = torch.tensor(self.num_classes).reshape(1, 1, nl).to(target_labels.device)
+        divisor_tensor = torch.empty_like(per_label_classes_tensor)
+        divisor_tensor[:, :, 0] = 1
+        divisor_tensor[:, :, 1:] = per_label_classes_tensor[:, :, :nl - 1]
+        cum_prod_tensor = torch.cumprod(divisor_tensor, dim=2)
+        target_labels = torch.div(target_labels, cum_prod_tensor, rounding_mode='trunc')
+        target_labels %= per_label_classes_tensor
+        target_labels[:, :, 1:] += torch.cumsum(divisor_tensor[:, :, 1:], dim=2)
+        return target_labels
+
+    def get_box_metrics(self, pd_scores, pd_bboxes, gt_labels, gt_bboxes, mask_gt):
+        """
+        Compute alignment metric given predicted and ground truth bounding boxes.
+
+        Args:
+            pd_scores (torch.Tensor): Predicted classification scores with shape (bs, num_total_anchors, num_classes).
+            pd_bboxes (torch.Tensor): Predicted bounding boxes with shape (bs, num_total_anchors, 4).
+            gt_labels (torch.Tensor): Ground truth labels with shape (bs, n_max_boxes, 1).
+            gt_bboxes (torch.Tensor): Ground truth boxes with shape (bs, n_max_boxes, 4).
+            mask_gt (torch.Tensor): Mask for valid ground truth boxes with shape (bs, n_max_boxes, h*w).
+
+        Returns:
+            align_metric (torch.Tensor): Alignment metric combining classification and localization.
+            overlaps (torch.Tensor): IoU overlaps between predicted and ground truth boxes.
+        """
+        na = pd_bboxes.shape[-2]
+        mask_gt = mask_gt.bool()  # b, max_num_obj, h*w
+        overlaps = torch.zeros([self.bs, self.n_max_boxes, na], dtype=pd_bboxes.dtype, device=pd_bboxes.device)
+        bbox_scores = torch.zeros([self.bs, self.n_max_boxes, na], dtype=pd_scores.dtype, device=pd_scores.device)
+
+        ind = torch.zeros([2, self.bs, self.n_max_boxes, len(self.num_classes)], dtype=torch.long)  # 2, b, max_num_obj, len(self.num_classes)
+        ind[0] = torch.arange(end=self.bs).view(-1, 1, 1).expand(-1, self.n_max_boxes, len(self.num_classes))  # b, max_num_obj, len(self.num_classes)
+        ind[1] = self.absolute_to_per_label_target_labels(gt_labels)  # b, max_num_obj, len(self.num_classes)
+        # Get the scores of each grid for each gt cls
+        bbox_scores[mask_gt] = torch.prod(pd_scores[ind[0], :, ind[1]], dim=2, dtype=pd_scores.dtype)[mask_gt]  # b, max_num_obj, h*w
+
+        # (b, max_num_obj, 1, 4), (b, 1, h*w, 4)
+        pd_boxes = pd_bboxes.unsqueeze(1).expand(-1, self.n_max_boxes, -1, -1)[mask_gt]
+        gt_boxes = gt_bboxes.unsqueeze(2).expand(-1, -1, na, -1)[mask_gt]
+        overlaps[mask_gt] = self.iou_calculation(gt_boxes, pd_boxes)
+
+        align_metric = bbox_scores.pow(self.alpha) * overlaps.pow(self.beta)
+        return align_metric, overlaps
+    
+    def get_targets(self, gt_labels, gt_bboxes, target_gt_idx, fg_mask):
+        """
+        Compute target labels, target bounding boxes, and target scores for the positive anchor points.
+
+        Args:
+            gt_labels (torch.Tensor): Ground truth labels of shape (b, max_num_obj, 1), where b is the
+                                batch size and max_num_obj is the maximum number of objects.
+            gt_bboxes (torch.Tensor): Ground truth bounding boxes of shape (b, max_num_obj, 4).
+            target_gt_idx (torch.Tensor): Indices of the assigned ground truth objects for positive
+                                    anchor points, with shape (b, h*w), where h*w is the total
+                                    number of anchor points.
+            fg_mask (torch.Tensor): A boolean tensor of shape (b, h*w) indicating the positive
+                              (foreground) anchor points.
+
+        Returns:
+            target_labels (torch.Tensor): Shape (b, h*w), containing the target labels for positive anchor points.
+            target_bboxes (torch.Tensor): Shape (b, h*w, 4), containing the target bounding boxes for positive
+                                          anchor points.
+            target_scores (torch.Tensor): Shape (b, h*w, num_classes), containing the target scores for positive
+                                          anchor points.
+        """
+        # Assigned target labels, (b, 1)
+        batch_ind = torch.arange(end=self.bs, dtype=torch.int64, device=gt_labels.device)[..., None]
+        target_gt_idx = target_gt_idx + batch_ind * self.n_max_boxes  # (b, h*w)
+        target_labels = gt_labels.long().flatten()[target_gt_idx]  # (b, h*w)
+
+        # Assigned target boxes, (b, max_num_obj, 4) -> (b, h*w, 4)
+        target_bboxes = gt_bboxes.view(-1, gt_bboxes.shape[-1])[target_gt_idx]
+
+        # Assigned target scores
+        target_labels.clamp_(0)
+        target_labels = self.absolute_to_per_label_target_labels(target_labels.unsqueeze(-1))
+
+        # 10x faster than F.one_hot()
+        target_scores = torch.zeros(
+            (target_labels.shape[0], target_labels.shape[1], self.bg_idx),
+            dtype=torch.int64,
+            device=target_labels.device,
+        )  # (b, h*w, 80)
+        target_scores.scatter_(2, target_labels, 1)
+
+        fg_scores_mask = fg_mask[:, :, None].repeat(1, 1, self.bg_idx)  # (b, h*w, 80)
+        target_scores = torch.where(fg_scores_mask > 0, target_scores, 0)
+
+        return target_labels, target_bboxes, target_scores

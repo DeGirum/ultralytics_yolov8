@@ -50,7 +50,7 @@ SOLUTION_MAP = {
 
 # Define valid tasks and modes
 MODES = frozenset({"train", "val", "predict", "export", "track", "benchmark"})
-TASKS = frozenset({"detect", "segment", "classify", "multi_label_classify", "pose", "obb", "regress"})
+TASKS = frozenset({"detect", "multi_label_detect", "segment", "classify", "multi_label_classify", "pose", "obb", "regress"})
 TASK2DATA = {
     "detect": "coco8.yaml",
     "segment": "coco8-seg.yaml",
@@ -58,7 +58,8 @@ TASK2DATA = {
     "pose": "coco8-pose.yaml",
     "obb": "dota8.yaml",
     "regress": "imdb10-age.yaml",
-    "multi_label_classify": "celeba-facial-attributes.yaml"
+    "multi_label_classify": "celeba-facial-attributes.yaml",
+    "multi_label_detect": "license_plate_ocr_multi_label_det.yaml"
 }
 TASK2MODEL = {
     "detect": "yolo11n.pt",
@@ -67,7 +68,8 @@ TASK2MODEL = {
     "pose": "yolo11n-pose.pt",
     "obb": "yolo11n-obb.pt",
     "regress": "yolov8n-regress.pt",
-    "multi_label_classify": "yolov8n-multi-label-classify.pt"
+    "multi_label_classify": "yolov8n-multi-label-classify.pt",
+    "multi_label_detect": "yolov8n-multi-label-detect.pt"
 }
 TASK2METRIC = {
     "detect": "metrics/mAP50-95(B)",
@@ -76,7 +78,8 @@ TASK2METRIC = {
     "pose": "metrics/mAP50-95(P)",
     "obb": "metrics/mAP50-95(B)",
     "regress": "metrics/MAE",
-    "multi_label_classify": "metrics/mean_acc"
+    "multi_label_classify": "metrics/mean_acc",
+    "multi_label_detect": "metrics/mAP50-95(B)",
 }
 MODELS = frozenset({TASK2MODEL[task] for task in TASKS})
 

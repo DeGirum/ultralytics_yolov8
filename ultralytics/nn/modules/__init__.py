@@ -89,7 +89,7 @@ from .head import (
     YOLOESegment,
     v10Detect,
 )
-from .head import Regress, Regress6, MultiLabelClassify
+from .head import Regress, Regress6, MultiLabelClassify, MultiLabelDetect
 
 from .transformer import (
     AIFI,
@@ -148,6 +148,7 @@ __all__ = (
     "Pose",
     "Classify",
     "MultiLabelClassify",
+    "MultiLabelDetect",
     "Regress",
     "Regress6",
     "TransformerEncoderLayer",

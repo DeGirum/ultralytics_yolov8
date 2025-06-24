@@ -40,6 +40,7 @@ from ultralytics.nn.modules import (
     CBLinear,
     Classify,
     MultiLabelClassify,
+    MultiLabelDetect,
     Concat,
     Conv,
     Conv2,
@@ -74,7 +75,7 @@ from ultralytics.nn.modules import (
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
-from ultralytics.utils.loss import v8RegressionLoss
+from ultralytics.utils.loss import v8RegressionLoss, v8MultiLabelDetectionLoss
 from ultralytics.utils.loss import (
     E2EDetectLoss,
     v8ClassificationLoss,
@@ -338,7 +339,7 @@ class DetectionModel(BaseModel):
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml["nc"] = nc  # override YAML value
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose)  # model, savelist
-        self.names = {i: f"{i}" for i in range(self.yaml["nc"])}  # default names dict
+        self.names = {i: f"{i}" for i in range(self.yaml["nc"] if isinstance(self.yaml["nc"], int) else sum(self.yaml["nc"]))}  # default names dict
         self.inplace = self.yaml.get("inplace", True)
         self.end2end = getattr(self.model[-1], "end2end", False)
 
@@ -437,6 +438,25 @@ class DetectionModel(BaseModel):
         """Initialize the loss criterion for the DetectionModel."""
         return E2EDetectLoss(self) if getattr(self, "end2end", False) else v8DetectionLoss(self)
 
+class MultiLabelDetectionModel(DetectionModel):
+    """YOLO multi-label detection model."""
+    
+    def __init__(self, cfg="yolo11n-multi-label-det.yaml", ch=3, nc=None, verbose=True):
+        """
+        Initialize YOLO multi-label detection model with given config and parameters.
+
+        Args:
+            cfg (str | dict): Model configuration file path or dictionary.
+            ch (int): Number of input channels.
+            nc (int, optional): Number of classes.
+            verbose (bool): Whether to display model information.
+        """
+        super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)
+        self.nc_per_label = nc
+
+    def init_criterion(self):
+        """Initialize the loss criterion for the model."""
+        return v8MultiLabelDetectionLoss(self)
 
 class OBBModel(DetectionModel):
     """YOLO Oriented Bounding Box (OBB) model."""
@@ -1571,13 +1591,15 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
         elif m in frozenset(
-            {Detect, WorldDetect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB, ImagePoolingAttn, v10Detect}
+            {Detect, WorldDetect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB, ImagePoolingAttn, v10Detect, MultiLabelDetect}
         ):
             args.append([ch[x] for x in f])
             if m is Segment or m is YOLOESegment:
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
             if m in {Detect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB}:
                 m.legacy = legacy
+            if m is MultiLabelDetect:
+                args[0] = sum(args[0])
         elif m is RTDETRDecoder:  # special case, channels arg must be passed in index 1
             args.insert(1, [ch[x] for x in f])
         elif m in (Regress, Regress6):
@@ -1661,7 +1683,7 @@ def guess_model_task(model):
         model (torch.nn.Module | dict): PyTorch model or model configuration in YAML format.
 
     Returns:
-        (str): Task of the model ('detect', 'segment', 'classify', 'multi_label_classify', 'pose', 'regress', 'obb').
+        (str): Task of the model ('detect', 'multi_label_detect', 'segment', 'classify', 'multi_label_classify', 'pose', 'regress', 'obb').
     """
 
     def cfg2task(cfg):
@@ -1671,6 +1693,8 @@ def guess_model_task(model):
             return "classify"
         if m in {"multilabelclassify"}:
             return "multi_label_classify"
+        if m == "multilabeldetect":
+            return "multi_label_detect"
         if "detect" in m:
             return "detect"
         if "segment" in m:
@@ -1705,6 +1729,9 @@ def guess_model_task(model):
                 return "pose"
             elif isinstance(m, OBB):
                 return "obb"
+            elif isinstance(m, MultiLabelDetect):
+                print("HERE2")
+                return "multi_label_detect"
             elif isinstance(m, (Detect, WorldDetect, YOLOEDetect, v10Detect)):
                 return "detect"
             elif isinstance(m, (Regress, Regress6)):
@@ -1723,6 +1750,9 @@ def guess_model_task(model):
             return "pose"
         elif "-obb" in model.stem or "obb" in model.parts:
             return "obb"
+        elif "-mldet" in model.stem or "multi_label_detect" in model.parts:
+            print("HERE3")
+            return "multi_label_detect"
         elif "detect" in model.parts:
             return "detect"
         elif "-regress" in model.stem or "regress" in model.parts:
