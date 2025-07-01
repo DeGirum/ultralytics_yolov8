@@ -5,7 +5,8 @@ path: /data1/ml_data/Global-Licenseplate-Dataset/ # dataset root dir
 train: train_multi_label.txt # train images (relative to 'path') 421851 images
 val: val_multi_label.txt # val images (relative to 'path') 46851 images
 
-nc: [37, 37, 37, 37, 37, 37, 37]
+nc: 1
+nc_per_label: [37, 37, 37, 37, 37, 37, 37]
 
 # Classes
 names:

@@ -84,6 +84,7 @@ class YOLODataset(BaseDataset):
         self.use_segments = task == "segment"
         self.use_keypoints = task == "pose"
         self.use_obb = task == "obb"
+        self.use_mlb_det = task == "multi_label_detect"
         self.data = data
         assert not (self.use_segments and self.use_keypoints), "Can not use both segments and keypoints."
         super().__init__(*args, channels=self.data["channels"], **kwargs)
@@ -108,6 +109,24 @@ class YOLODataset(BaseDataset):
                 "'kpt_shape' in data.yaml missing or incorrect. Should be a list with [number of "
                 "keypoints, number of dims (2 for x,y or 3 for x,y,visible)], i.e. 'kpt_shape: [17, 3]'"
             )
+        if self.use_mlb_det:
+            nc_per_label = self.data.get("nc_per_label", [])
+            label_class_names = self.data.get("label_class_names", {})
+            if len(nc_per_label) == 0:
+                raise ValueError(
+                    "'nc_per_label' in data.yaml missing or incorrect. Should be a list with [number of "
+                    "classes for label1, number of classes for label2, ...], i.e. 'nc_per_label: [2, 1]'"
+                )
+            if len(label_class_names) == 0 or \
+                len(label_class_names) != nc_per_label[0] if len(set(nc_per_label)) == 1 else \
+                len(label_class_names) != sum(nc_per_label):
+                raise ValueError(
+                    "'label_class_names' in data.yaml missing or incorrect. Should be a dict with class names "
+                    "for label1, class names for label2, ..., (if classes for each label are different) "
+                    "i.e. 'label_class_names: {'0': 'label1class1', '1': 'label1class2', '2': 'label2class1'}' "
+                    " or a dict with class names for the labels (if classes for each label are the same) "
+                    "i.e. 'label_class_names: {'0': 'labelclass1', '1': 'labelclass2', '2': 'labelclass3'}'"
+                )
         with ThreadPool(NUM_THREADS) as pool:
             results = pool.imap(
                 func=verify_image_label,
@@ -120,10 +139,12 @@ class YOLODataset(BaseDataset):
                     repeat(nkpt),
                     repeat(ndim),
                     repeat(self.single_cls),
+                    repeat(self.use_mlb_det),
+                    repeat(len(nc_per_label)),
                 ),
             )
             pbar = TQDM(results, desc=desc, total=total)
-            for im_file, lb, shape, segments, keypoint, nm_f, nf_f, ne_f, nc_f, msg in pbar:
+            for im_file, lb, shape, segments, keypoint, mlb, nm_f, nf_f, ne_f, nc_f, msg in pbar:
                 nm += nm_f
                 nf += nf_f
                 ne += ne_f
@@ -137,6 +158,7 @@ class YOLODataset(BaseDataset):
                             "bboxes": lb[:, 1:],  # n, 4
                             "segments": segments,
                             "keypoints": keypoint,
+                            "mlb": mlb,
                             "normalized": True,
                             "bbox_format": "xywh",
                         }
@@ -228,6 +250,7 @@ class YOLODataset(BaseDataset):
                 return_mask=self.use_segments,
                 return_keypoint=self.use_keypoints,
                 return_obb=self.use_obb,
+                return_mlb=self.use_mlb_det,
                 batch_idx=True,
                 mask_ratio=hyp.mask_ratio,
                 mask_overlap=hyp.overlap_mask,
@@ -268,6 +291,7 @@ class YOLODataset(BaseDataset):
         keypoints = label.pop("keypoints", None)
         bbox_format = label.pop("bbox_format")
         normalized = label.pop("normalized")
+        mlb = label.pop("mlb", None)
 
         # NOTE: do NOT resample oriented boxes
         segment_resamples = 100 if self.use_obb else 1000
@@ -279,7 +303,7 @@ class YOLODataset(BaseDataset):
             segments = np.stack(resample_segments(segments, n=segment_resamples), axis=0)
         else:
             segments = np.zeros((0, segment_resamples, 2), dtype=np.float32)
-        label["instances"] = Instances(bboxes, segments, keypoints, bbox_format=bbox_format, normalized=normalized)
+        label["instances"] = Instances(bboxes, segments, keypoints, mlb, bbox_format=bbox_format, normalized=normalized)
         return label
 
     @staticmethod
@@ -303,7 +327,7 @@ class YOLODataset(BaseDataset):
                 value = torch.stack(value, 0)
             elif k == "visuals":
                 value = torch.nn.utils.rnn.pad_sequence(value, batch_first=True)
-            if k in {"masks", "keypoints", "bboxes", "cls", "segments", "obb"}:
+            if k in {"masks", "keypoints", "bboxes", "cls", "segments", "obb", "mlb"}:
                 value = torch.cat(value, 0)
             new_batch[k] = value
         new_batch["batch_idx"] = list(new_batch["batch_idx"])

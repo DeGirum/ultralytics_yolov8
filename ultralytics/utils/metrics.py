@@ -1495,6 +1495,162 @@ class OBBMetrics(SimpleClass):
     def curves_results(self):
         """Return a list of curves for accessing specific metrics curves."""
         return []
+
+class MultiLabelDetectMetrics(DetMetrics, MultiLabelClassifyMetrics):
+    """
+    Calculates and aggregates detection and multi-label classification metrics over a given set of classes.
+
+    Attributes:
+        save_dir (Path): Path to the directory where the output plots should be saved.
+        plot (bool): Whether to save the detection and multi-label classification plots.
+        names (dict): Dictionary of class names.
+        box (Metric): An instance of the Metric class to calculate box detection metrics.
+        speed (dict): Dictionary to store the time taken in different phases of inference.
+        task (str): The task type, set to 'multi_label_detect'.
+
+    Methods:
+        process(tp_m, tp_b, conf, pred_cls, target_cls): Processes metrics over the given set of predictions.
+        mean_results(): Returns the mean of the detection and segmentation metrics over all the classes.
+        class_result(i): Returns the detection and segmentation metrics of class `i`.
+        maps: Returns the mean Average Precision (mAP) scores for IoU thresholds ranging from 0.50 to 0.95.
+        fitness: Returns the fitness scores, which are a single weighted combination of metrics.
+        ap_class_index: Returns the list of indices of classes used to compute Average Precision (AP).
+        results_dict: Returns the dictionary containing all the detection and segmentation metrics and fitness score.
+    """
+
+    def __init__(self, save_dir=Path("."), plot=False, names=()) -> None:
+        """
+        Initialize the MultiLabelDetectMetrics class with directory path, class names, and plotting options.
+
+        Args:
+            save_dir (Path, optional): Directory to save plots.
+            plot (bool, optional): Whether to plot precision-recall curves.
+            names (dict, optional): Dictionary mapping class indices to names.
+        """
+        DetMetrics.__init__(self, save_dir, plot, names)
+        MultiLabelClassifyMetrics.__init__(self, is_binary=False)
+        self.mean_acc = []
+        self.sequence_acc = []
+        self.top1_acc = []
+        self.topk_acc = []
+        self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
+        self.task = "multi_label_detect"
+
+    def process(self, tp, conf, pred_cls, target_cls, pred_mlb, target_mlb, mlb_matches, nc_per_label, on_plot=None):
+        """
+        Process the detection and multi-label classification metrics over the given set of predictions.
+
+        Args:
+            tp (np.ndarray): True positive array for boxes.
+            conf (np.ndarray): Confidence array.
+            pred_cls (np.ndarray): Predicted class indices array.
+            target_cls (np.ndarray): Target class indices array.
+            on_plot (callable, optional): Function to call after plots are generated.
+        """
+        self.nc_per_label = nc_per_label
+        self.nl = len(nc_per_label)
+        results_box = ap_per_class(
+            tp,
+            conf,
+            pred_cls,
+            target_cls,
+            plot=self.plot,
+            on_plot=on_plot,
+            save_dir=self.save_dir,
+            names=self.names,
+            prefix="Box",
+        )[2:]
+        self.box.nc = len(self.names)
+        self.box.update(results_box)
+        
+        for i in range(tp.shape[1]):
+            self.process_mlb(pred_mlb[:, mlb_matches[i][:, 1], :], target_mlb[:, mlb_matches[i][:, 0], :])
+        
+    def process_mlb(self, pred, targets):
+        B, nbox, mlb_nc = pred.shape
+        targets = targets.reshape(B * nbox, -1)
+        top1 = torch.cat([p.argmax(dim=2) for p in pred.split(self.nc_per_label, dim=2)], dim=2).reshape(B * nbox, -1)  # shape [B, nl]
+        correct = (top1 == targets)  # shape [B, nl]
+
+        # Per-output accuracy
+        self.label_acc.append(correct.sum(dim=0) / B)
+        self.mean_acc.append(self.label_acc.mean().item())
+        self.sequence_acc.append((correct.sum(dim=1) == self.nl).float().mean().item())
+        self.top1_acc.append(correct.float().mean().item())
+
+        # Top-k accuracy
+        pred_r = pred.reshape(B * nbox, mlb_nc)
+        topk_preds = torch.cat([torch.topk(p.unsqueeze(1), k=self.topk, dim=2).indices for p in pred_r.split(self.nc_per_label, dim=1)], dim=1)
+        topk_correct = (topk_preds == targets.unsqueeze(2)).any(dim=2)
+        self.topk_acc.append(topk_correct.float().mean().item())
+
+        # Per-class accuracy
+        # self.class_acc = [0.0] * nc
+        # flat_preds = top1.view(-1)
+        # flat_targets = targets.view(-1)
+        # for c in range(nc):
+        #     mask = flat_targets == c
+        #     correct_for_class = (flat_preds[mask] == c).sum().item()
+        #     total_for_class = mask.sum().item()
+        #     acc = correct_for_class / total_for_class if total_for_class > 0 else float("nan")
+        #     self.class_acc[c] = acc
+
+    @property
+    def keys(self):
+        """Return list of evaluation metric keys."""
+        return [
+            "metrics/precision(B)",
+            "metrics/recall(B)",
+            "metrics/mAP50(B)",
+            "metrics/mAP50-95(B)",
+            "metrics/mean_acc_50-95",
+            "metrics/sequence_acc_50-95",
+            "metrics/top1_acc_50-95",
+            f"metrics/top{self.topk}_acc_50-95"
+        ]
+
+    @property
+    def results_dict(self):
+        """Return dictionary of computed performance metrics and statistics."""
+        return dict(zip(self.keys + ["fitness"], self.mean_results() + [self.fitness]))
+    
+    def mean_results(self):
+        """
+        Calculate mean of detected objects and corresponding multi-label classification metrics
+        & return precision, recall, mAP50, mAP50-95, mean accuracy at 50-95, sequence accuracy at 50-95,
+        top-1 accuracy at 50-95, top-k accuracy at 50-95.
+        """
+        mlb_mean_results = [
+            torch.tensor(self.mean_acc).mean().item(),
+            torch.tensor(self.sequence_acc).mean().item(),
+            torch.tensor(self.top1_acc).mean().item(),
+            torch.tensor(self.topk_acc).mean().item()
+        ]
+        return self.box.mean_results() + mlb_mean_results
+
+    @property
+    def fitness(self):
+        """Return combined fitness score for MLB and box detection."""
+        return 0.5 * self.box.fitness() + 0.5 * (0.1 * self.mean_acc[0] + 0.9 * torch.tensor(self.mean_acc).mean().item())
+
+    @property
+    def curves(self):
+        """Return a list of curves for accessing specific metrics curves."""
+        return [
+            "Precision-Recall(B)",
+            "F1-Confidence(B)",
+            "Precision-Confidence(B)",
+            "Recall-Confidence(B)",
+            "Precision-Recall(P)",
+            "F1-Confidence(P)",
+            "Precision-Confidence(P)",
+            "Recall-Confidence(P)",
+        ]
+
+    @property
+    def curves_results(self):
+        """Return dictionary of computed performance metrics and statistics."""
+        return self.box.curves_results
     
 class RegressMetrics(SimpleClass):
     """

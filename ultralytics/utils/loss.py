@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from ultralytics.utils.metrics import OKS_SIGMA
 from ultralytics.utils.ops import crop_mask, xywh2xyxy, xyxy2xywh
-from ultralytics.utils.tal import RotatedTaskAlignedAssigner, TaskAlignedAssigner, dist2bbox, dist2rbox, make_anchors, MultiLabelTaskAlignedAssigner
+from ultralytics.utils.tal import RotatedTaskAlignedAssigner, TaskAlignedAssigner, dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import autocast
 
 from .metrics import bbox_iou, probiou
@@ -897,28 +897,14 @@ class v8OBBLoss(v8DetectionLoss):
             pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
         return torch.cat((dist2rbox(pred_dist, pred_angle, anchor_points), pred_angle), dim=-1)
 
-class v8MultiLabelDetectionLoss:
+class v8MultiLabelDetectionLoss(v8DetectionLoss):
     """Criterion class for computing training losses for YOLOv8 multi-label object detection."""
 
     def __init__(self, model, tal_topk=10):  # model must be de-paralleled
         """Initialize v8MultiLabelDetectionLoss with model parameters and task-aligned assignment settings."""
-        device = next(model.parameters()).device  # get model device
-        h = model.args  # hyperparameters
-
-        m = model.model[-1]  # MultiLabelDetect() module
-        self.criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.2)
-        self.hyp = h
-        self.stride = m.stride  # model strides
-        self.nc = model.nc_per_label  # list of number of classes per label
-        self.no = m.nc + m.reg_max * 4
-        self.reg_max = m.reg_max
-        self.device = device
-
-        self.use_dfl = m.reg_max > 1
-
-        self.assigner = MultiLabelTaskAlignedAssigner(topk=tal_topk, num_classes=self.nc, alpha=0.5, beta=6.0)
-        self.bbox_loss = BboxLoss(m.reg_max).to(device)
-        self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
+        super().__init__(model=model, tal_topk=tal_topk)
+        self.crossentropy = torch.nn.CrossEntropyLoss(label_smoothing=0.2)
+        self.nc_per_label = model.nc_per_label  # list of number of classes per label
 
     def preprocess(self, targets, batch_size, scale_tensor):
         """Preprocess targets by converting to tensor format and scaling coordinates."""
@@ -947,15 +933,16 @@ class v8MultiLabelDetectionLoss:
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
     def __call__(self, preds, batch):
-        """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
-        loss = torch.zeros(3, device=self.device)  # box, cls, dfl
-        feats = preds[1] if isinstance(preds, tuple) else preds
+        """Calculate the sum of the loss for box, cls, dfl, and mlb multiplied by batch size."""
+        loss = torch.zeros(4, device=self.device)  # box, cls, dfl, mlb
+        feats, pred_mlb = preds if isinstance(preds[0], list) else preds[1]
         pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
-            (self.reg_max * 4, sum(self.nc)), 1
+            (self.reg_max * 4, self.nc), 1
         )
 
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
         pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+        pred_mlb = pred_mlb.permute(0, 2, 1).contiguous()
 
         dtype = pred_scores.dtype
         batch_size = pred_scores.shape[0]
@@ -963,18 +950,16 @@ class v8MultiLabelDetectionLoss:
         anchor_points, stride_tensor = make_anchors(feats, self.stride, 0.5)
 
         # Targets
-        targets = torch.cat((batch["batch_idx"].view(-1, 1), batch["cls"].view(-1, 1), batch["bboxes"]), 1)
+        batch_idx = batch["batch_idx"].view(-1, 1)
+        targets = torch.cat((batch_idx, batch["cls"].view(-1, 1), batch["bboxes"]), 1)
         targets = self.preprocess(targets.to(self.device), batch_size, scale_tensor=imgsz[[1, 0, 1, 0]])
         gt_labels, gt_bboxes = targets.split((1, 4), 2)  # cls, xyxy
         mask_gt = gt_bboxes.sum(2, keepdim=True).gt_(0.0)
 
         # Pboxes
         pred_bboxes = self.bbox_decode(anchor_points, pred_distri)  # xyxy, (b, h*w, 4)
-        # dfl_conf = pred_distri.view(batch_size, -1, 4, self.reg_max).detach().softmax(-1)
-        # dfl_conf = (dfl_conf.amax(-1).mean(-1) + dfl_conf.amax(-1).amin(-1)) / 2
-
-        _, target_bboxes, target_scores, fg_mask, _ = self.assigner(
-            # pred_scores.detach().sigmoid() * 0.8 + dfl_conf.unsqueeze(-1) * 0.2,
+        
+        _, target_bboxes, target_scores, fg_mask, target_gt_idx = self.assigner(
             pred_scores.detach().sigmoid(),
             (pred_bboxes.detach() * stride_tensor).type(gt_bboxes.dtype),
             anchor_points * stride_tensor,
@@ -984,15 +969,9 @@ class v8MultiLabelDetectionLoss:
         )
 
         target_scores_sum = max(target_scores.sum(), 1)
-        B = pred_scores.shape[0]
-        N = pred_scores.shape[1]
-        C = pred_scores.shape[2]
-        
-        pred_scores_flat = pred_scores.view(B * N, C)
-        target_scores_flat = target_scores.view(B * N, C)
 
         # Cls loss
-        loss[1] = torch.sum(torch.stack([self.criterion(ps, ts) for ps, ts in zip(pred_scores_flat.split(self.nc, dim=-1), target_scores_flat.split(self.nc, dim=-1))]))
+        loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
 
         # Bbox loss
         if fg_mask.sum():
@@ -1000,12 +979,76 @@ class v8MultiLabelDetectionLoss:
             loss[0], loss[2] = self.bbox_loss(
                 pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask
             )
+            gt_mlb = batch["mlb"].to(self.device).int().clone()
+            loss[3] = self.calculate_mlb_loss(
+                fg_mask, target_gt_idx, gt_mlb, batch_idx, pred_mlb
+            )
 
-        loss[0] *= self.hyp.box  # box gain
-        loss[1] *= self.hyp.cls  # cls gain
-        loss[2] *= self.hyp.dfl  # dfl gain
+        loss[0] *= self.hyp.box     # box gain
+        loss[1] *= self.hyp.cls     # cls gain
+        loss[2] *= self.hyp.dfl     # dfl gain
+        loss[3] *= self.hyp.mlb_cls # mlb gain
 
-        return loss * batch_size, loss.detach()  # loss(box, cls, dfl)
+        return loss * batch_size, loss.detach()  # loss(box, cls, dfl, mlb)
+    
+    def calculate_mlb_loss(
+        self, masks, target_gt_idx, gt_mlb, batch_idx, pred_mlb
+    ):
+        """
+        Calculate the multi-label classification loss for the model.
+
+        This function calculates the multi-label classification loss, which is a cross entropy loss, for a given batch.
+
+        Args:
+            masks (torch.Tensor): Binary mask tensor indicating object presence, shape (BS, N_anchors).
+            target_gt_idx (torch.Tensor): Index tensor mapping anchors to ground truth objects, shape (BS, N_anchors).
+            gt_mlb (torch.Tensor): Ground truth multi-label class labels, shape (N_mlb_in_batch, N_labels).
+            batch_idx (torch.Tensor): Batch index tensor for multi-label class labels, shape (N_mlb_in_batch, 1).
+            pred_mlb (torch.Tensor): Predicted multi-label class labels, shape (BS, N_anchors, N_total_label_classes).
+
+        Returns:
+            mlb_loss (torch.Tensor): The multi-label classification loss.
+        """
+        batch_idx = batch_idx.flatten()
+        batch_size = len(masks)
+
+        # Find the maximum number of multi-label class labels in a single image
+        max_mlb = torch.unique(batch_idx, return_counts=True)[1].max()
+
+        # Create a tensor to hold batched multi-label class labels
+        batched_mlb = torch.zeros(
+            (batch_size, max_mlb, gt_mlb.shape[1]), device=gt_mlb.device
+        )
+
+        # TODO: any idea how to vectorize this?
+        # Fill batched_mlb with multi-label class labels based on batch_idx
+        for i in range(batch_size):
+            mlb_i = gt_mlb[batch_idx == i]
+            batched_mlb[i, : mlb_i.shape[0]] = mlb_i
+
+        # Expand dimensions of target_gt_idx to match the shape of batched_mlb
+        target_gt_idx_expanded = target_gt_idx.unsqueeze(-1)
+
+        # Use target_gt_idx_expanded to select multi-label class labels from batched_mlb
+        selected_mlb = batched_mlb.gather(
+            1, target_gt_idx_expanded.expand(-1, -1, gt_mlb.shape[1])
+        )
+
+        mlb_loss = 0
+
+        if masks.any():
+            gt_mlb_sel = selected_mlb[masks]
+            pred_mlb_sel = pred_mlb[masks]
+            B = pred_mlb.shape[0]
+            N = pred_mlb.shape[1]
+            C = pred_mlb.shape[2]
+            
+            pred_mlb_flat = pred_mlb_sel.view(B * N, C)
+            gt_mlb_flat = gt_mlb_sel.view(B * N, gt_mlb_sel.shape[2])
+            mlb_loss = torch.sum(torch.stack([self.crossentropy(pm, gm[:, 0]) for pm, gm in zip(pred_mlb_flat.split(self.nc_per_label, dim=-1), gt_mlb_flat.split(1, dim=-1))]))
+
+        return mlb_loss
+
 
 class v8RegressionLoss:
     """Criterion class for computing regression training losses."""

@@ -176,7 +176,7 @@ def verify_image(args):
 
 def verify_image_label(args):
     """Verify one image-label pair."""
-    im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim, single_cls = args
+    im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim, single_cls, mlb_det, num_labels = args
     # Number (missing, found, empty, corrupt), message, segments, keypoints
     nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, "", [], None
     try:
@@ -199,7 +199,7 @@ def verify_image_label(args):
             nf = 1  # label found
             with open(lb_file, encoding="utf-8") as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
+                if any(len(x) > 6 for x in lb) and (not keypoint) and (not mlb_det):  # is segment
                     classes = np.array([x[0] for x in lb], dtype=np.float32)
                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
@@ -208,6 +208,9 @@ def verify_image_label(args):
                 if keypoint:
                     assert lb.shape[1] == (5 + nkpt * ndim), f"labels require {(5 + nkpt * ndim)} columns each"
                     points = lb[:, 5:].reshape(-1, ndim)[:, :2]
+                elif mlb_det:
+                    assert lb.shape[1] == (5 + num_labels), f"labels require {(5 + num_labels)} columns each"
+                    points = lb[:, 1:5]
                 else:
                     assert lb.shape[1] == 5, f"labels require 5 columns, {lb.shape[1]} columns detected"
                     points = lb[:, 1:]
@@ -231,16 +234,22 @@ def verify_image_label(args):
             else:
                 ne = 1  # label empty
                 lb = np.zeros((0, (5 + nkpt * ndim) if keypoint else 5), dtype=np.float32)
+                if mlb_det:
+                    lb = np.zeros((0, (5 + num_labels)), dtype=np.float32)
         else:
             nm = 1  # label missing
             lb = np.zeros((0, (5 + nkpt * ndim) if keypoints else 5), dtype=np.float32)
+            if mlb_det:
+                lb = np.zeros((0, (5 + num_labels)), dtype=np.float32)
         if keypoint:
             keypoints = lb[:, 5:].reshape(-1, nkpt, ndim)
             if ndim == 2:
                 kpt_mask = np.where((keypoints[..., 0] < 0) | (keypoints[..., 1] < 0), 0.0, 1.0).astype(np.float32)
                 keypoints = np.concatenate([keypoints, kpt_mask[..., None]], axis=-1)  # (nl, nkpt, 3)
+        if mlb_det:
+            mlb = lb[:, 5:]
         lb = lb[:, :5]
-        return im_file, lb, shape, segments, keypoints, nm, nf, ne, nc, msg
+        return im_file, lb, shape, segments, keypoints, mlb, nm, nf, ne, nc, msg
     except Exception as e:
         nc = 1
         msg = f"{prefix}{im_file}: ignoring corrupt image/label: {e}"
@@ -505,44 +514,30 @@ def check_multi_label_det_dataset(dataset, autodownload=True):
                 )
             LOGGER.warning("renaming data YAML 'validation' key to 'val' to match YOLO format.")
             data["val"] = data.pop("validation")  # replace 'validation' key with 'val' key
+    if "names" not in data and "nc" not in data:
+        raise SyntaxError(emojis(f"{dataset} key missing ❌.\n either 'names' or 'nc' are required in all data YAMLs."))
+    if "names" in data and "nc" in data and len(data["names"]) != data["nc"]:
+        raise SyntaxError(emojis(f"{dataset} 'names' length {len(data['names'])} and 'nc: {data['nc']}' must match."))
+    if "names" not in data:
+        data["names"] = [f"class_{i}" for i in range(data["nc"])]
+    else:
+        data["nc"] = len(data["names"])
     if "label_class_names" not in data:
         raise SyntaxError(emojis(f"{dataset} key missing ❌.\n 'label_class_names' is required in all data YAMLs."))
-    if "nc" not in data:
-        raise SyntaxError(emojis(f"{dataset} key missing ❌.\n 'nc' is required in all data YAMLs."))
-    elif not isinstance(data["nc"], list) or not isinstance(data["nc"][0], int):
-        raise SyntaxError(emojis(f"{dataset} key not in expected format ❌.\n 'nc' must be a list of integers."))
-    if "label_class_names" in data and "nc" in data:
-        if len(set(data["nc"])) == 1:
-            if len(data["label_class_names"]) != data["nc"][0]:
-                raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'nc[0]: {data['nc'][0]}' must match."))
+    if "nc_per_label" not in data:
+        raise SyntaxError(emojis(f"{dataset} key missing ❌.\n 'nc_per_label' is required in all data YAMLs."))
+    elif not isinstance(data["nc_per_label"], list) or not isinstance(data["nc_per_label"][0], int):
+        raise SyntaxError(emojis(f"{dataset} key not in expected format ❌.\n 'nc_per_label' must be a list of integers."))
+    if "label_class_names" in data and "nc_per_label" in data:
+        if len(set(data["nc_per_label"])) == 1:
+            if len(data["label_class_names"]) != data["nc_per_label"][0]:
+                raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'nc_per_label[0]: {data['nc_per_label'][0]}' must match."))
         else:
-            if len(data["label_class_names"]) != sum(data["nc"]):
-                raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'sum(nc): {sum(data['nc'])}' must match."))
+            if len(data["label_class_names"]) != sum(data["nc_per_label"]):
+                raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'sum(nc_per_label): {sum(data['nc_per_label'])}' must match."))
 
-    label_class_names = check_class_names(data["label_class_names"])
-    classes_for_all_labels = len(set(data["nc"])) == 1
-    
-    def flat_index(indices, strides):
-        return sum(i * s for i, s in zip(indices, strides))
-
-    class_names = {}
-    idx_strides = [1]
-    idx_offsets = [0]
-    for b in data["nc"][:-1]:
-        idx_strides.append(idx_strides[-1] * b)
-        idx_offsets.append(idx_offsets[-1] + b)
-    
-    import itertools
-    
-    for combo in itertools.product(*[range(x) for x in reversed(data["nc"])]):
-        per_label_idx = tuple(reversed(combo))
-        if classes_for_all_labels:
-            label = "".join([label_class_names[pli] for pli in per_label_idx])
-        else:
-            label = ", ".join([label_class_names[idx_offsets[i] + pli] for i, pli in enumerate(per_label_idx)])
-        class_names[flat_index(per_label_idx, idx_strides)] = label
-    
-    data["names"] = class_names
+    data["names"] = check_class_names(data["names"])
+    data["label_class_names"] = check_class_names(data["label_class_names"])
     data["channels"] = data.get("channels", 3)  # get image channels, default to 3
 
     # Resolve paths

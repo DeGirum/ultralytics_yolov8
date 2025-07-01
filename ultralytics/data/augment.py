@@ -2045,6 +2045,7 @@ class Format:
         return_mask (bool): Whether to return instance masks for segmentation.
         return_keypoint (bool): Whether to return keypoints for pose estimation.
         return_obb (bool): Whether to return oriented bounding boxes.
+        return_mlb (bool): Whether to return multi-label classification labels.
         mask_ratio (int): Downsample ratio for masks.
         mask_overlap (bool): Whether to overlap masks.
         batch_idx (bool): Whether to keep batch indexes.
@@ -2070,6 +2071,7 @@ class Format:
         return_mask=False,
         return_keypoint=False,
         return_obb=False,
+        return_mlb=False,
         mask_ratio=4,
         mask_overlap=True,
         batch_idx=True,
@@ -2087,6 +2089,7 @@ class Format:
             return_mask (bool): If True, returns instance masks for segmentation tasks.
             return_keypoint (bool): If True, returns keypoints for pose estimation tasks.
             return_obb (bool): If True, returns oriented bounding boxes.
+            return_mlb (bool): If True, returns multi-label classification labels.
             mask_ratio (int): Downsample ratio for masks.
             mask_overlap (bool): If True, allows mask overlap.
             batch_idx (bool): If True, keeps batch indexes.
@@ -2113,6 +2116,7 @@ class Format:
         self.return_mask = return_mask  # set False when training detection only
         self.return_keypoint = return_keypoint
         self.return_obb = return_obb
+        self.return_mlb = return_mlb
         self.mask_ratio = mask_ratio
         self.mask_overlap = mask_overlap
         self.batch_idx = batch_idx  # keep the batch indexes
@@ -2176,6 +2180,8 @@ class Format:
             labels["bboxes"] = (
                 xyxyxyxy2xywhr(torch.from_numpy(instances.segments)) if len(instances.segments) else torch.zeros((0, 5))
             )
+        if self.return_mlb:
+            labels["mlb"] = torch.from_numpy(instances.mlb)
         # NOTE: need to normalize obb in xywhr format for width-height consistency
         if self.normalize:
             labels["bboxes"][:, [0, 2]] /= w

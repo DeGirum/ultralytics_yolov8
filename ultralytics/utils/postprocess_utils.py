@@ -10,8 +10,9 @@ def separate_outputs_decode(preds, task, task_id_shape, img_shape=()):
     task_inds = []
     separate_pose = task == "pose" and len(preds) > 7
     separate_masks = task == "segment" and len(preds) > 8
+    separate_mlb = task == "multi_label_detect" and len(preds) > 7
     for idx, s in enumerate(preds):
-        if (task == "pose" or task == "segment") and s.shape[2] == task_id_shape:
+        if (task == "pose" or task == "segment" or task == "multi_label_detect") and s.shape[2] == task_id_shape:
             task_inds.append(idx)
     
     task_inds_pos = [
@@ -33,11 +34,11 @@ def separate_outputs_decode(preds, task, task_id_shape, img_shape=()):
     
     task_tensor = (
         torch.cat([preds[task_inds[ti]] for ti in task_inds_pos], 1)
-        if separate_pose or separate_masks
+        if separate_pose or separate_masks or separate_mlb
         else preds[task_inds[task_inds_pos[0]]]
     )
     
-    if task == "pose":
+    if task in {"pose", "multi_label_detect"}:
         return [item for index, item in enumerate(preds) if index not in task_inds], task_tensor
     elif task == "segment":
         return [item for index, item in enumerate(preds) if index not in task_inds + [pidx]], task_tensor, proto

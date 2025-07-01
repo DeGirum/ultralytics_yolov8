@@ -223,7 +223,7 @@ class Instances:
         ... )
     """
 
-    def __init__(self, bboxes, segments=None, keypoints=None, bbox_format="xywh", normalized=True) -> None:
+    def __init__(self, bboxes, segments=None, keypoints=None, mlb=None, bbox_format="xywh", normalized=True) -> None:
         """
         Initialize the object with bounding boxes, segments, and keypoints.
 
@@ -238,6 +238,7 @@ class Instances:
         self.keypoints = keypoints
         self.normalized = normalized
         self.segments = segments
+        self.mlb = mlb
 
     def convert_bbox(self, format):
         """
@@ -339,12 +340,14 @@ class Instances:
         """
         segments = self.segments[index] if len(self.segments) else self.segments
         keypoints = self.keypoints[index] if self.keypoints is not None else None
+        mlb = self.mlb[index] if self.mlb is not None else None
         bboxes = self.bboxes[index]
         bbox_format = self._bboxes.format
         return Instances(
             bboxes=bboxes,
             segments=segments,
             keypoints=keypoints,
+            mlb=mlb,
             bbox_format=bbox_format,
             normalized=self.normalized,
         )
@@ -426,7 +429,7 @@ class Instances:
                 self.keypoints = self.keypoints[good]
         return good
 
-    def update(self, bboxes, segments=None, keypoints=None):
+    def update(self, bboxes, segments=None, keypoints=None, mlb=None):
         """
         Update instance variables.
 
@@ -440,6 +443,8 @@ class Instances:
             self.segments = segments
         if keypoints is not None:
             self.keypoints = keypoints
+        if mlb is not None:
+            self.mlb = mlb
 
     def __len__(self):
         """Return the length of the instance list."""
@@ -472,6 +477,7 @@ class Instances:
             return instances_list[0]
 
         use_keypoint = instances_list[0].keypoints is not None
+        use_mlb = instances_list[0].mlb is not None
         bbox_format = instances_list[0]._bboxes.format
         normalized = instances_list[0].normalized
 
@@ -491,7 +497,8 @@ class Instances:
         else:
             cat_segments = np.concatenate([b.segments for b in instances_list], axis=axis)
         cat_keypoints = np.concatenate([b.keypoints for b in instances_list], axis=axis) if use_keypoint else None
-        return cls(cat_boxes, cat_segments, cat_keypoints, bbox_format, normalized)
+        cat_mlb = np.concatenate([b.mlb for b in instances_list], axis=axis) if use_mlb else None
+        return cls(cat_boxes, cat_segments, cat_keypoints, cat_mlb, bbox_format, normalized)
 
     @property
     def bboxes(self):

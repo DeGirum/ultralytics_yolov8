@@ -277,7 +277,7 @@ class Results(SimpleClass):
         self.names = names
         self.path = path
         self.save_dir = None
-        self._keys = "boxes", "masks", "probs", "keypoints", "obb", "regress"
+        self._keys = "boxes", "masks", "probs", "keypoints", "obb", "regress", "mlb"
 
     def __getitem__(self, idx):
         """

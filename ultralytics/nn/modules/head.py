@@ -199,11 +199,37 @@ class Detect(nn.Module):
         i = torch.arange(batch_size)[..., None]  # batch indices
         return torch.cat([boxes[i, index // nc], scores[..., None], (index % nc)[..., None].float()], dim=-1)
 
+
 class MultiLabelDetect(Detect):
     """YOLO MultiLabelDetect head for multi-label detection models."""
-    def __init__(self, nc=80, ch=()):
+    def __init__(self, nc=80, nc_per_label=[80], ch=()):
         """Initialize the YOLO multi-label detection layer with specified number of classes and channels."""
         super().__init__(nc=nc, ch=ch)
+        self.nc_per_label = nc_per_label
+        self.mlb_nc = sum(nc_per_label)
+        c3 = max(ch[0], min(self.mlb_nc, 100))
+        self.cv4 = nn.ModuleList(
+            nn.Sequential(
+                nn.Sequential(DWConv(x, x, 3), Conv(x, c3, 1)),
+                nn.Sequential(DWConv(c3, c3, 3), Conv(c3, c3, 1)),
+                nn.Conv2d(c3, self.mlb_nc, 1),
+            )
+            for x in ch
+        )
+    
+    def forward(self, x):
+        """Perform forward pass through YOLO model and return predictions."""
+        bs = x[0].shape[0]  # batch size
+        if self.export and self.separate_outputs:
+            mlb = [torch.permute(self.cv4[i](x[i]), (0, 2, 3, 1)).reshape(bs, -1, self.mlb_nc) for i in range(self.nl)]
+        else:
+            mlb = torch.cat([self.cv4[i](x[i]).view(bs, self.mlb_nc, -1) for i in range(self.nl)], -1)  # (bs, mlb_nc, h*w)
+        x = Detect.forward(self, x)
+        if self.training or (self.separate_outputs and self.export):
+            return x, mlb
+        mlb_softmax = torch.cat([m.sigmoid() if m.shape[1] == 1 else m.softmax(1) for m in mlb.split(self.nc_per_label, dim=1)])
+        return torch.cat([x, mlb_softmax], 1) if self.export else (torch.cat([x[0], mlb_softmax], 1), (x[1], mlb))
+
 
 class Segment(Detect):
     """YOLO Segment head for segmentation models."""

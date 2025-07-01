@@ -353,7 +353,7 @@ class DetectionModel(BaseModel):
                 """Perform a forward pass through the model, handling different Detect subclass types accordingly."""
                 if self.end2end:
                     return self.forward(x)["one2many"]
-                return self.forward(x)[0] if isinstance(m, (Segment, YOLOESegment, Pose, OBB)) else self.forward(x)
+                return self.forward(x)[0] if isinstance(m, (Segment, YOLOESegment, Pose, OBB, MultiLabelDetect)) else self.forward(x)
 
             m.stride = torch.tensor([s / x.shape[-2] for x in _forward(torch.zeros(1, ch, s, s))])  # forward
             self.stride = m.stride
@@ -441,7 +441,7 @@ class DetectionModel(BaseModel):
 class MultiLabelDetectionModel(DetectionModel):
     """YOLO multi-label detection model."""
     
-    def __init__(self, cfg="yolo11n-multi-label-det.yaml", ch=3, nc=None, verbose=True):
+    def __init__(self, cfg="yolov8n-multi-label-det.yaml", ch=3, nc=None, nc_per_label=None, verbose=True):
         """
         Initialize YOLO multi-label detection model with given config and parameters.
 
@@ -451,8 +451,12 @@ class MultiLabelDetectionModel(DetectionModel):
             nc (int, optional): Number of classes.
             verbose (bool): Whether to display model information.
         """
-        super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)
-        self.nc_per_label = nc
+        yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)
+        if nc_per_label and nc_per_label != yaml["nc_per_label"]:
+            LOGGER.info(f"Overriding model.yaml nc_per_label={yaml['nc_per_label']} with nc_per_label={nc_per_label}")
+            yaml["nc_per_label"] = nc_per_label  # override YAML value
+        super().__init__(cfg=yaml, ch=ch, nc=nc, verbose=verbose)
+        self.nc_per_label = nc_per_label
 
     def init_criterion(self):
         """Initialize the loss criterion for the model."""
@@ -1467,6 +1471,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
     max_channels = float("inf")
     nc, act, scales = (d.get(x) for x in ("nc", "activation", "scales"))
     nl = d.get("nl", 1)  # number of labels, default to 1 for multi-label classification
+    nc_per_label = d.get("nc_per_label")
     depth, width, kpt_shape = (d.get(x, 1.0) for x in ("depth_multiple", "width_multiple", "kpt_shape"))
     if scales:
         scale = d.get("scale")
@@ -1598,8 +1603,6 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
             if m in {Detect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB}:
                 m.legacy = legacy
-            if m is MultiLabelDetect:
-                args[0] = sum(args[0])
         elif m is RTDETRDecoder:  # special case, channels arg must be passed in index 1
             args.insert(1, [ch[x] for x in f])
         elif m in (Regress, Regress6):

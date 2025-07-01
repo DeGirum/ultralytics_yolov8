@@ -52,14 +52,20 @@ class MultiLabelDetectionTrainer(yolo.detect.DetectionTrainer):
         Returns:
             (MultiLabelDetectionModel): YOLO multi-label detection model.
         """
-        model = MultiLabelDetectionModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
+        model = MultiLabelDetectionModel(cfg, nc=self.data["nc"], nc_per_label=self.data["nc_per_label"], ch=self.data["channels"], verbose=verbose and RANK == -1)
         if weights:
             model.load(weights)
         return model
+    
+    def set_model_attributes(self):
+        """Set model attributes based on dataset information."""
+        super().set_model_attributes()
+        self.model.nc_per_label = self.data["nc_per_label"]  # attach number of classes per label to model
+        self.model.label_class_names = self.data["label_class_names"]  # attach label class names to model
 
     def get_validator(self):
         """Return a MultiLabelDetectionValidator for YOLO model validation."""
-        self.loss_names = "box_loss", "cls_loss", "dfl_loss"
+        self.loss_names = "box_loss", "cls_loss", "dfl_loss", "mlb_loss"
         return yolo.multi_label_detect.MultiLabelDetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
         )
