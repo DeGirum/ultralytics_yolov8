@@ -1335,13 +1335,14 @@ class RandomPerspective:
 
         segments = instances.segments
         keypoints = instances.keypoints
+        mlb = instances.mlb
         # Update bboxes if there are segments.
         if len(segments):
             bboxes, segments = self.apply_segments(segments, M)
 
         if keypoints is not None:
             keypoints = self.apply_keypoints(keypoints, M)
-        new_instances = Instances(bboxes, segments, keypoints, bbox_format="xyxy", normalized=False)
+        new_instances = Instances(bboxes, segments, keypoints, mlb, bbox_format="xyxy", normalized=False)
         # Clip
         new_instances.clip(*self.size)
 

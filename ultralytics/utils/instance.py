@@ -427,6 +427,8 @@ class Instances:
                 self.segments = self.segments[good]
             if self.keypoints is not None:
                 self.keypoints = self.keypoints[good]
+            if self.mlb is not None:
+                self.mlb = self.mlb[good]
         return good
 
     def update(self, bboxes, segments=None, keypoints=None, mlb=None):

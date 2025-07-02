@@ -1564,23 +1564,31 @@ class MultiLabelDetectMetrics(DetMetrics, MultiLabelClassifyMetrics):
         self.box.update(results_box)
         
         for i in range(tp.shape[1]):
-            self.process_mlb(pred_mlb[:, mlb_matches[i][:, 1], :], target_mlb[:, mlb_matches[i][:, 0], :])
+            self.process_mlb(pred_mlb, target_mlb, mlb_matches[i])
         
-    def process_mlb(self, pred, targets):
-        B, nbox, mlb_nc = pred.shape
-        targets = targets.reshape(B * nbox, -1)
-        top1 = torch.cat([p.argmax(dim=2) for p in pred.split(self.nc_per_label, dim=2)], dim=2).reshape(B * nbox, -1)  # shape [B, nl]
+    def process_mlb(self, pred_mlb, targets_mlb, matches):
+        if len(matches) == 0:   # No correctly predicted bounding boxes - accuracies are zero
+            self.label_acc.append([])
+            self.mean_acc.append(0.0)
+            self.sequence_acc.append(0.0)
+            self.top1_acc.append(0.0)
+            self.topk_acc.append(0.0)
+            return
+
+        pred = pred_mlb[matches[:, 1], :]
+        nbox, _ = pred.shape
+        targets = targets_mlb[matches[:, 0], :]
+        top1 = torch.cat([p.argmax(dim=1, keepdim=True) for p in pred.split(self.nc_per_label, dim=1)], dim=1)  # shape [B, nl]
         correct = (top1 == targets)  # shape [B, nl]
 
         # Per-output accuracy
-        self.label_acc.append(correct.sum(dim=0) / B)
+        self.label_acc.append(correct.sum(dim=0) / nbox)
         self.mean_acc.append(self.label_acc.mean().item())
         self.sequence_acc.append((correct.sum(dim=1) == self.nl).float().mean().item())
         self.top1_acc.append(correct.float().mean().item())
 
         # Top-k accuracy
-        pred_r = pred.reshape(B * nbox, mlb_nc)
-        topk_preds = torch.cat([torch.topk(p.unsqueeze(1), k=self.topk, dim=2).indices for p in pred_r.split(self.nc_per_label, dim=1)], dim=1)
+        topk_preds = torch.cat([torch.topk(p.unsqueeze(1), k=self.topk, dim=2).indices for p in pred.split(self.nc_per_label, dim=1)], dim=1)
         topk_correct = (topk_preds == targets.unsqueeze(2)).any(dim=2)
         self.topk_acc.append(topk_correct.float().mean().item())
 

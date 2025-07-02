@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 from ultralytics.models.yolo.detect import DetectionValidator
-from ultralytics.utils import LOGGER, ops
+from ultralytics.utils import ops
 from ultralytics.utils.postprocess_utils import decode_bbox, separate_outputs_decode
 from ultralytics.utils.metrics import MultiLabelDetectMetrics, box_iou
 
@@ -101,7 +101,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
         """
         super().init_metrics(model)
         self.nc_per_label = model.nc_per_label if hasattr(model, "nc_per_label") else model.model.nc_per_label
-        self.mlb_stats = dict(pred_mlb=[], target_mlb=[], matches=[])
+        self.mlb_stats = dict(pred_mlb=[], target_mlb=[], mlb_matches=[])
 
     def get_stats(self):
         """
@@ -114,7 +114,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
         self.nt_per_class = np.bincount(stats["target_cls"].astype(int), minlength=self.nc)
         self.nt_per_image = np.bincount(stats["target_img"].astype(int), minlength=self.nc)
         stats.pop("target_img", None)
-        mlb_stats = {k: torch.cat(v, 0).cpu().numpy() for k, v in self.mlb_stats.items()}  # to numpy
+        mlb_stats = {k: ([torch.cat([l[i] for l in v]).cpu() for i in range(len(v[0]))] if k == "mlb_matches" else torch.cat(v, 0).cpu()) for k, v in self.mlb_stats.items()}  # to numpy
         if len(stats):
             self.metrics.process(**stats, **mlb_stats, nc_per_label=self.nc_per_label, on_plot=self.on_plot)
         return self.metrics.results_dict
@@ -183,7 +183,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
 
             # Evaluate
             if nl:
-                stat["tp"], mlb_stat["matches"] = self._process_batch(predn, bbox, cls)
+                stat["tp"], mlb_stat["mlb_matches"] = self._process_batch(predn, bbox, cls)
             if self.args.plots:
                 self.confusion_matrix.process_batch(predn, bbox, cls)
 
@@ -264,8 +264,8 @@ class MultiLabelDetectionValidator(DetectionValidator):
                         matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
                         # matches = matches[matches[:, 2].argsort()[::-1]]
                         matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
-                    correct_matches.append(torch.tensor(matches, dtype=torch.int, device=pred_classes.device))
                     correct_det[matches[:, 1].astype(int), i] = True
+                correct_matches.append(torch.tensor(matches, dtype=torch.int, device=pred_classes.device))
         return torch.tensor(correct_det, dtype=torch.bool, device=pred_classes.device), correct_matches
 
     # def plot_val_samples(self, batch, ni):

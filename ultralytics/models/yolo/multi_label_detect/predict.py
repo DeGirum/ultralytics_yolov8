@@ -1,12 +1,10 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import torch
-import itertools
-import math
 
 from ultralytics.models.yolo.detect import DetectionPredictor
 from ultralytics.utils import ops
-from ultralytics.utils.postprocess_utils import decode_bbox
+from ultralytics.utils.postprocess_utils import decode_bbox, separate_outputs_decode
 
 
 class MultiLabelDetectionPredictor(DetectionPredictor):
@@ -56,30 +54,14 @@ class MultiLabelDetectionPredictor(DetectionPredictor):
             >>> processed_results = predictor.postprocess(preds, img, orig_imgs)
         """
         save_feats = getattr(self, "save_feats", False)
-        if self.separate_outputs:  # Quant friendly export with separated outputs
-            preds = decode_bbox(preds, img.shape, self.device)
-
         nc_per_label = self.model.nc_per_label if hasattr(self.model, "nc_per_label") else self.model.model.nc_per_label
-        nc = sum(nc_per_label)
-        preds = preds[0].permute(0, 2, 1)
-        box, prob = preds.split((4, nc), dim=-1)
-        joint_prob = torch.empty((*(prob.shape[:-1]), math.prod(nc_per_label))).to(box.device)
 
-        def flat_index(indices, strides):
-            return sum(i * s for i, s in zip(indices, strides))
-
-        idx_strides = [1]
-        idx_offsets = [0]
-        for b in nc_per_label[:-1]:
-            idx_strides.append(idx_strides[-1] * b)
-            idx_offsets.append(idx_offsets[-1] + b)
-
-        for combo in itertools.product(*[range(x) for x in reversed(nc_per_label)]):
-            per_label_idx = tuple(reversed(combo))
-            flat_idx = flat_index(per_label_idx, idx_strides)
-            joint_prob[:, :, flat_idx:flat_idx + 1] = torch.prod(prob[:, :, [i + o for i, o in zip(per_label_idx, idx_offsets)]], dim=-1, keepdim=True)
-        
-        preds = torch.cat([box, joint_prob], dim=-1)
+        if self.separate_outputs:  # Quant friendly export with separated outputs
+            pred_order, mlb = separate_outputs_decode(preds, self.args.task, sum(nc_per_label))
+            pred_decoded = decode_bbox(pred_order, img.shape, self.device)
+            mlb = torch.permute(mlb, (0, 2, 1))
+            mlb_softmax = torch.cat([m.sigmoid() if m.shape[1] == 1 else m.softmax(1) for m in mlb.split(nc_per_label, dim=1)])
+            preds = torch.cat([pred_decoded, mlb_softmax], 1)
 
         preds = ops.non_max_suppression(
             preds,

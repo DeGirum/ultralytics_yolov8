@@ -1037,15 +1037,10 @@ class v8MultiLabelDetectionLoss(v8DetectionLoss):
         mlb_loss = 0
 
         if masks.any():
-            gt_mlb_sel = selected_mlb[masks]
+            gt_mlb_sel = selected_mlb[masks].long()
             pred_mlb_sel = pred_mlb[masks]
-            B = pred_mlb.shape[0]
-            N = pred_mlb.shape[1]
-            C = pred_mlb.shape[2]
-            
-            pred_mlb_flat = pred_mlb_sel.view(B * N, C)
-            gt_mlb_flat = gt_mlb_sel.view(B * N, gt_mlb_sel.shape[2])
-            mlb_loss = torch.sum(torch.stack([self.crossentropy(pm, gm[:, 0]) for pm, gm in zip(pred_mlb_flat.split(self.nc_per_label, dim=-1), gt_mlb_flat.split(1, dim=-1))]))
+
+            mlb_loss = torch.sum(torch.stack([self.crossentropy(pm, gm[:, 0]) for pm, gm in zip(pred_mlb_sel.split(self.nc_per_label, dim=-1), gt_mlb_sel.split(1, dim=-1))]))
 
         return mlb_loss
 

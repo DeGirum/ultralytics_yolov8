@@ -227,7 +227,7 @@ class MultiLabelDetect(Detect):
         x = Detect.forward(self, x)
         if self.training or (self.separate_outputs and self.export):
             return x, mlb
-        mlb_softmax = torch.cat([m.sigmoid() if m.shape[1] == 1 else m.softmax(1) for m in mlb.split(self.nc_per_label, dim=1)])
+        mlb_softmax = torch.cat([m.sigmoid() if m.shape[1] == 1 else m.softmax(1) for m in mlb.split(self.nc_per_label, dim=1)], dim=1)
         return torch.cat([x, mlb_softmax], 1) if self.export else (torch.cat([x[0], mlb_softmax], 1), (x[1], mlb))
 
 
