@@ -1582,8 +1582,9 @@ class MultiLabelDetectMetrics(DetMetrics, MultiLabelClassifyMetrics):
         correct = (top1 == targets)  # shape [B, nl]
 
         # Per-output accuracy
-        self.label_acc.append(correct.sum(dim=0) / nbox)
-        self.mean_acc.append(self.label_acc.mean().item())
+        label_acc = correct.sum(dim=0) / nbox
+        self.label_acc.append(label_acc)
+        self.mean_acc.append(label_acc.mean().item())
         self.sequence_acc.append((correct.sum(dim=1) == self.nl).float().mean().item())
         self.top1_acc.append(correct.float().mean().item())
 

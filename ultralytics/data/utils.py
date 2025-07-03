@@ -253,7 +253,7 @@ def verify_image_label(args):
     except Exception as e:
         nc = 1
         msg = f"{prefix}{im_file}: ignoring corrupt image/label: {e}"
-        return [None, None, None, None, None, nm, nf, ne, nc, msg]
+        return [None, None, None, None, None, None, nm, nf, ne, nc, msg]
 
 
 def visualize_image_annotations(image_path, txt_path, label_map):
@@ -524,20 +524,22 @@ def check_multi_label_det_dataset(dataset, autodownload=True):
         data["nc"] = len(data["names"])
     if "label_class_names" not in data:
         raise SyntaxError(emojis(f"{dataset} key missing ❌.\n 'label_class_names' is required in all data YAMLs."))
-    if "nc_per_label" not in data:
-        raise SyntaxError(emojis(f"{dataset} key missing ❌.\n 'nc_per_label' is required in all data YAMLs."))
-    elif not isinstance(data["nc_per_label"], list) or not isinstance(data["nc_per_label"][0], int):
-        raise SyntaxError(emojis(f"{dataset} key not in expected format ❌.\n 'nc_per_label' must be a list of integers."))
-    if "label_class_names" in data and "nc_per_label" in data:
-        if len(set(data["nc_per_label"])) == 1:
-            if len(data["label_class_names"]) != data["nc_per_label"][0]:
-                raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'nc_per_label[0]: {data['nc_per_label'][0]}' must match."))
-        else:
-            if len(data["label_class_names"]) != sum(data["nc_per_label"]):
-                raise SyntaxError(emojis(f"{dataset} 'label_class_names' length {len(data['label_class_names'])} and 'sum(nc_per_label): {sum(data['nc_per_label'])}' must match."))
+    elif not isinstance(data["label_class_names"], dict) or \
+        not all([isinstance(data["label_class_names"][k], dict) for k in list(data["label_class_names"].keys())]):
+        raise SyntaxError(emojis(f"{dataset} 'label_class_names' must be a dict with at least one key, and each value of this dict must also be a dict."))
+    nl = data.get("nl", 0)
+    num_labels = len(list(data["label_class_names"].values()))
+    if num_labels == 1:
+        if nl == 0:
+            LOGGER.warning("'label_class_names' has 1 item and 'nl' is not provided, assuming single label.")
+            nl = 1
+        nc_per_label = [len(list(data["label_class_names"].values())[0])] * nl
+    else:
+        nc_per_label = [len(list(data["label_class_names"].values())[i]) for i in range(len(data["label_class_names"]))]
+    data["nc_per_label"] = nc_per_label
 
     data["names"] = check_class_names(data["names"])
-    data["label_class_names"] = check_class_names(data["label_class_names"])
+    data["label_class_names"] = {k: check_class_names(v) for k, v in data["label_class_names"].items()}
     data["channels"] = data.get("channels", 3)  # get image channels, default to 3
 
     # Resolve paths
