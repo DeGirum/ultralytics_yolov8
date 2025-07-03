@@ -69,6 +69,10 @@ class Detect(nn.Module):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
 
         if self.separate_outputs and self.export:
+            if self.end2end:
+                self.cv2 = self.one2one_cv2
+                self.cv3 = self.one2one_cv3
+                
             boxes = []
             probs = []
             for i in range(self.nl):
