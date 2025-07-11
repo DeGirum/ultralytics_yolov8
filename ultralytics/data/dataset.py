@@ -109,6 +109,7 @@ class YOLODataset(BaseDataset):
                 "'kpt_shape' in data.yaml missing or incorrect. Should be a list with [number of "
                 "keypoints, number of dims (2 for x,y or 3 for x,y,visible)], i.e. 'kpt_shape: [17, 3]'"
             )
+        nc_per_label = []
         if self.use_mlb_det:
             nc_per_label = self.data.get("nc_per_label", [])
             label_class_names = self.data.get("label_class_names", {})
@@ -123,9 +124,9 @@ class YOLODataset(BaseDataset):
                 raise ValueError(
                     "'label_class_names' in data.yaml missing or incorrect. Should be a dict with class names "
                     "for label1, class names for label2, ..., (if classes for each label are different) "
-                    "i.e. 'label_class_names: {'0': 'label1class1', '1': 'label1class2', '2': 'label2class1'}' "
-                    " or a dict with class names for the labels (if classes for each label are the same) "
-                    "i.e. 'label_class_names: {'0': 'labelclass1', '1': 'labelclass2', '2': 'labelclass3'}'"
+                    "i.e. 'label_class_names: {'label1': {'0': 'label1class1', '1': 'label1class2'}, 'label2': {'0': 'label2class1'}}' "
+                    "or a dict with class names for the labels (if classes for each label are the same) "
+                    "i.e. 'label_class_names: {'label': {'0': 'labelclass1', '1': 'labelclass2', '2': 'labelclass3'}}'"
                 )
         with ThreadPool(NUM_THREADS) as pool:
             results = pool.imap(

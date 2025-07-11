@@ -1,7 +1,7 @@
 # Total training images: 421851
 # Total validation images: 46851
 
-path: /data1/ml_data/Global-Licenseplate-Dataset-multi-label/ # dataset root dir
+path: /data1/ml_data/Global-Licenseplate-Dataset-multi-label # dataset root dir
 train: train.txt # train images (relative to 'path') 421851 images
 val: val.txt # val images (relative to 'path') 46851 images
 

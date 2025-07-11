@@ -4,7 +4,7 @@
 # Model docs: https://docs.ultralytics.com/models/yolov8
 
 # Parameters
-nc: 10
+nc: 1
 nc_per_label: [37, 37, 37, 37, 37, 37, 37]  # number of classes per label
 scales: # model compound scaling constants, i.e. 'model=yolov8n-multi-label-det.yaml' will call yolov8-multi-label-det.yaml with scale 'n'
   # [depth, width, max_channels]

@@ -11,7 +11,7 @@ def parser_arguments():
     parser.add_argument('--data', type=str, default='coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
     parser.add_argument('--batch', type=int, default=128, help='total batch size for all GPUs, -1 for autobatch')
-    parser.add_argument('--imgsz', '--img', '--img-size', type=int, nargs='+', default=[640, 640], help='train, val image size (pixels)')    
+    parser.add_argument('--imgsz', '--img', '--img-size', type=int, nargs='+', default=640, help='train, val image size (pixels)')    
     parser.add_argument('--device', nargs='+', default=[0], help='cuda device, i.e. [0 1]')
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='AdamW', help='optimizer')
     parser.add_argument('--workers', type=int, default=2, help='max dataloader workers (per RANK in DDP mode)')
