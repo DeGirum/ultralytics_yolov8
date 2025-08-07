@@ -112,21 +112,9 @@ class YOLODataset(BaseDataset):
         nc_per_label = []
         if self.use_mlb_det:
             nc_per_label = self.data.get("nc_per_label", [])
-            label_class_names = self.data.get("label_class_names", {})
             if len(nc_per_label) == 0:
                 raise ValueError(
-                    "'nc_per_label' in data.yaml missing or incorrect. Should be a list with [number of "
-                    "classes for label1, number of classes for label2, ...], i.e. 'nc_per_label: [2, 1]'"
-                )
-            if len(label_class_names) == 0 or \
-                len(label_class_names) != nc_per_label[0] if len(set(nc_per_label)) == 1 else \
-                len(label_class_names) != sum(nc_per_label):
-                raise ValueError(
-                    "'label_class_names' in data.yaml missing or incorrect. Should be a dict with class names "
-                    "for label1, class names for label2, ..., (if classes for each label are different) "
-                    "i.e. 'label_class_names: {'label1': {'0': 'label1class1', '1': 'label1class2'}, 'label2': {'0': 'label2class1'}}' "
-                    "or a dict with class names for the labels (if classes for each label are the same) "
-                    "i.e. 'label_class_names: {'label': {'0': 'labelclass1', '1': 'labelclass2', '2': 'labelclass3'}}'"
+                    "'label_class_names' in data.yaml missing."
                 )
         with ThreadPool(NUM_THREADS) as pool:
             results = pool.imap(

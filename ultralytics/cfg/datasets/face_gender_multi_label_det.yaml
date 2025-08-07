@@ -1,0 +1,17 @@
+# Total training images: 30353
+# Total validation images: 5000
+
+path: /data/ml-data/coco-face-gender-mlb # dataset root dir
+train: train.txt # train images (relative to 'path') 30353 images
+val: val.txt # val images (relative to 'path') 5000 images
+
+nc: 1
+
+# Classes
+names:
+  0: Human face
+
+label_class_names:
+  gender:
+    0: Female
+    1: Male

@@ -1518,7 +1518,7 @@ class MultiLabelDetectMetrics(DetMetrics, MultiLabelClassifyMetrics):
         results_dict: Returns the dictionary containing all the detection and segmentation metrics and fitness score.
     """
 
-    def __init__(self, save_dir=Path("."), plot=False, names=()) -> None:
+    def __init__(self, topk=3, save_dir=Path("."), plot=False, names=()) -> None:
         """
         Initialize the MultiLabelDetectMetrics class with directory path, class names, and plotting options.
 
@@ -1528,7 +1528,7 @@ class MultiLabelDetectMetrics(DetMetrics, MultiLabelClassifyMetrics):
             names (dict, optional): Dictionary mapping class indices to names.
         """
         DetMetrics.__init__(self, save_dir, plot, names)
-        MultiLabelClassifyMetrics.__init__(self, is_binary=False)
+        MultiLabelClassifyMetrics.__init__(self, is_binary=False, topk=topk)
         self.mean_acc = []
         self.sequence_acc = []
         self.top1_acc = []

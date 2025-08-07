@@ -1040,7 +1040,13 @@ class v8MultiLabelDetectionLoss(v8DetectionLoss):
             gt_mlb_sel = selected_mlb[masks].long()
             pred_mlb_sel = pred_mlb[masks]
 
-            mlb_loss = torch.dot(torch.stack([self.crossentropy(pm, gm[:, 0]) for pm, gm in zip(pred_mlb_sel.split(self.nc_per_label, dim=-1), gt_mlb_sel.split(1, dim=-1))]), torch.tensor(self.nc_per_label, device=pred_mlb_sel.device) / sum(self.nc_per_label))
+            mlb_loss = torch.dot(
+                torch.stack([
+                    self.crossentropy(pm, gm[:, 0])
+                    for pm, gm in zip(pred_mlb_sel.split(self.nc_per_label, dim=-1), gt_mlb_sel.split(1, dim=-1))
+                ]),
+                torch.tensor(self.nc_per_label, dtype=pred_mlb_sel.dtype, device=pred_mlb_sel.device) / sum(self.nc_per_label)
+            )
 
         return mlb_loss
 

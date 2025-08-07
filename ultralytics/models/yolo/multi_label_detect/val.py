@@ -49,7 +49,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
         """
         super().__init__(dataloader, save_dir, pbar, args, _callbacks)
         self.args.task = "multi_label_detect"
-        self.topk = 3
+        self.topk = self.args.topk
         self.metrics = MultiLabelDetectMetrics(save_dir=self.save_dir)
 
     def preprocess(self, batch):
@@ -60,6 +60,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
 
     def get_desc(self):
         """Return description of evaluation metrics in string format."""
+        self.topk = min(self.topk, min(self.dataloader.dataset.data.get("nc_per_label")))
         return ("%22s" + "%11s" * 10) % (
             "Class",
             "Images",
@@ -100,6 +101,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
             model (torch.nn.Module): Model to validate.
         """
         super().init_metrics(model)
+        self.metrics.topk = self.topk
         self.nc_per_label = model.nc_per_label if hasattr(model, "nc_per_label") else model.model.nc_per_label
         self.mlb_stats = dict(pred_mlb=[], target_mlb=[], mlb_matches=[])
 
@@ -157,7 +159,9 @@ class MultiLabelDetectionValidator(DetectionValidator):
                 pred_cls=torch.zeros(0, device=self.device),
                 tp=torch.zeros(npr, self.niou, dtype=torch.bool, device=self.device),
             )
-            mlb_stat = dict()
+            mlb_stat = dict(
+                mlb_matches=[torch.zeros(0, 2, dtype=int, device=self.device)]*len(self.iouv)
+            )
             pbatch = self._prepare_batch(si, batch)
             cls, bbox = pbatch.pop("cls"), pbatch.pop("bbox")
             nl = len(cls)
@@ -189,7 +193,7 @@ class MultiLabelDetectionValidator(DetectionValidator):
 
             for k in self.stats.keys():
                 self.stats[k].append(stat[k])
-                
+
             for k in self.mlb_stats.keys():
                 self.mlb_stats[k].append(mlb_stat[k])
 

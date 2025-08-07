@@ -526,16 +526,22 @@ def check_multi_label_det_dataset(dataset, autodownload=True):
         raise SyntaxError(emojis(f"{dataset} key missing ❌.\n 'label_class_names' is required in all data YAMLs."))
     elif not isinstance(data["label_class_names"], dict) or \
         not all([isinstance(data["label_class_names"][k], dict) for k in list(data["label_class_names"].keys())]):
-        raise SyntaxError(emojis(f"{dataset} 'label_class_names' must be a dict with at least one key, and each value of this dict must also be a dict."))
+        raise SyntaxError(emojis(f"{dataset} 'label_class_names' must be a dict with class names "
+            "for label1, class names for label2, ..., (if classes for each label are different) "
+            "i.e. 'label_class_names: {'label1': {'0': 'label1class1', '1': 'label1class2'}, 'label2': {'0': 'label2class1'}}' "
+            "or a dict with class names for the labels (if classes for each label are the same) "
+            "i.e. 'label_class_names: {'label': {'0': 'labelclass1', '1': 'labelclass2', '2': 'labelclass3'}}'. "
+            "In the latter case, an optional 'nl' key may be provided to specify the number of labels (assumed to be 1 if not provided)."))
     nl = data.get("nl", 0)
-    num_labels = len(list(data["label_class_names"].values()))
-    if num_labels == 1:
+    classes_per_label = list(data["label_class_names"].values())
+    num_label_class_dicts = len(classes_per_label)
+    if num_label_class_dicts == 1:
         if nl == 0:
             LOGGER.warning("'label_class_names' has 1 item and 'nl' is not provided, assuming single label.")
             nl = 1
-        nc_per_label = [len(list(data["label_class_names"].values())[0])] * nl
+        nc_per_label = [len(classes_per_label[0])] * nl
     else:
-        nc_per_label = [len(list(data["label_class_names"].values())[i]) for i in range(len(data["label_class_names"]))]
+        nc_per_label = [len(classes_per_label[i]) for i in range(num_label_class_dicts)]
     data["nc_per_label"] = nc_per_label
 
     data["names"] = check_class_names(data["names"])
