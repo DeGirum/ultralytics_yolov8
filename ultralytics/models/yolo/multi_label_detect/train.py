@@ -5,6 +5,7 @@ from copy import copy
 from ultralytics.models import yolo
 from ultralytics.nn.tasks import MultiLabelDetectionModel
 from ultralytics.utils import RANK
+from ultralytics.utils.plotting import plot_results
 
 
 class MultiLabelDetectionTrainer(yolo.detect.DetectionTrainer):
@@ -69,3 +70,7 @@ class MultiLabelDetectionTrainer(yolo.detect.DetectionTrainer):
         return yolo.multi_label_detect.MultiLabelDetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
         )
+    
+    def plot_metrics(self):
+        """Plot metrics from a CSV file."""
+        plot_results(file=self.csv, mlb=True, on_plot=self.on_plot)  # save results.png

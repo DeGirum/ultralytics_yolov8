@@ -116,7 +116,22 @@ class MultiLabelDetectionValidator(DetectionValidator):
         self.nt_per_class = np.bincount(stats["target_cls"].astype(int), minlength=self.nc)
         self.nt_per_image = np.bincount(stats["target_img"].astype(int), minlength=self.nc)
         stats.pop("target_img", None)
-        mlb_stats = {k: ([torch.cat([l[i] for l in v]).cpu() for i in range(len(v[0]))] if k == "mlb_matches" else torch.cat(v, 0).cpu()) for k, v in self.mlb_stats.items()}  # to numpy
+        len_mlb_target = torch.tensor([len(v) for v in self.mlb_stats["target_mlb"]], dtype=torch.long).cpu()
+        len_mlb_pred = torch.tensor([len(v) for v in self.mlb_stats["pred_mlb"]], dtype=torch.long).cpu()
+        mlb_target_offsets = torch.zeros(len_mlb_target.size(), dtype=torch.long).cpu()
+        mlb_target_offsets[1:] = torch.cumsum(len_mlb_target, dim=0)[:-1]
+        mlb_pred_offsets = torch.zeros(len_mlb_pred.size(), dtype=torch.long).cpu()
+        mlb_pred_offsets[1:] = torch.cumsum(len_mlb_pred, dim=0)[:-1]
+        mlb_stats = {k: torch.cat(v, 0).cpu() for k, v in self.mlb_stats.items() if k != "mlb_matches"}  # to numpy
+        mlb_stats["mlb_matches"] = []
+        for i in range(len(self.iouv)):
+            iou_thresh_matches = []
+            for bidx in range(mlb_pred_offsets.numel()):    
+                b_matches = self.mlb_stats["mlb_matches"][bidx][i]
+                b_matches[:, 0] += mlb_target_offsets[bidx]
+                b_matches[:, 1] += mlb_pred_offsets[bidx]
+                iou_thresh_matches.append(b_matches)
+            mlb_stats["mlb_matches"].append(torch.cat(iou_thresh_matches).cpu())
         if len(stats):
             self.metrics.process(**stats, **mlb_stats, nc_per_label=self.nc_per_label, on_plot=self.on_plot)
         return self.metrics.results_dict

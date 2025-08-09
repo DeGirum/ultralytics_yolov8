@@ -857,6 +857,7 @@ def plot_results(
     segment: bool = False,
     pose: bool = False,
     classify: bool = False,
+    mlb: bool = False,
     on_plot: Optional[Callable] = None,
 ):
     """
@@ -869,6 +870,7 @@ def plot_results(
         segment (bool, optional): Flag to indicate if the data is for segmentation.
         pose (bool, optional): Flag to indicate if the data is for pose estimation.
         classify (bool, optional): Flag to indicate if the data is for classification.
+        mlb (bool, optional): Flag to indicate if the data is for multi-label object detection.
         on_plot (callable, optional): Callback function to be executed after plotting. Takes filename as an argument.
 
     Examples:
@@ -889,6 +891,9 @@ def plot_results(
     elif pose:
         fig, ax = plt.subplots(2, 9, figsize=(21, 6), tight_layout=True)
         index = [2, 3, 4, 5, 6, 7, 8, 11, 12, 15, 16, 17, 18, 19, 9, 10, 13, 14]
+    elif mlb:
+        fig, ax = plt.subplots(2, 8, figsize=(18, 6), tight_layout=True)
+        index = [2, 3, 4, 5, 6, 7, 14, 15, 16, 17, 8, 9, 10, 11, 12, 13]
     else:
         fig, ax = plt.subplots(2, 5, figsize=(12, 6), tight_layout=True)
         index = [2, 3, 4, 5, 6, 9, 10, 11, 7, 8]
