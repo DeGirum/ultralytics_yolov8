@@ -646,6 +646,19 @@ class YOLOEDetect(Detect):
         """Process features with class prompt embeddings to generate detections."""
         if hasattr(self, "lrpc"):  # for prompt-free inference
             return self.forward_lrpc(x, return_mask)
+        
+        if self.separate_outputs and self.export and not hasattr(self, "lrpc"):
+            boxes = []
+            probs = []
+
+            for i in range(self.nl):
+                a = self.cv2[i](x[i])
+                b = self.cv4[i](self.cv3[i](x[i]), cls_pe)
+                x[i] = torch.cat((a, b), 1)  # save concatenated results
+                boxes.append(a)
+                probs.append(b)
+            return [torch.permute(x, (0, 2, 3, 1)).reshape(x.shape[0], -1, x.shape[1]) for x in boxes + probs]
+
         for i in range(self.nl):
             x[i] = torch.cat((self.cv2[i](x[i]), self.cv4[i](self.cv3[i](x[i]), cls_pe)), 1)
         if self.training:
@@ -691,6 +704,12 @@ class YOLOESegment(YOLOEDetect):
             x = YOLOEDetect.forward(self, x, text)
         else:
             x, mask = YOLOEDetect.forward(self, x, text, return_mask=True)
+
+        if not has_lrpc and self.separate_outputs and self.export:
+            mc = [torch.permute(self.cv5[i](x[i]), (0, 2, 3, 1)).reshape(bs, -1, self.nm) for i in range(self.nl)] # mask coefficients
+            p = p.permute(0, 2, 3, 1)
+            proto_shape = p.shape
+            return x, mc, p.reshape(proto_shape[0], proto_shape[1] * proto_shape[2], proto_shape[3])
 
         if self.training:
             return x, mc, p
