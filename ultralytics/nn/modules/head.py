@@ -697,8 +697,12 @@ class YOLOESegment(YOLOEDetect):
         p = self.proto(x[0])  # mask protos
         bs = p.shape[0]  # batch size
 
-        mc = torch.cat([self.cv5[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
         has_lrpc = hasattr(self, "lrpc")
+
+        if not has_lrpc and self.separate_outputs and self.export:
+            mc = [torch.permute(self.cv5[i](x[i]), (0, 2, 3, 1)).reshape(bs, -1, self.nm) for i in range(self.nl)] # mask coefficients
+        else:
+            mc = torch.cat([self.cv5[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
 
         if not has_lrpc:
             x = YOLOEDetect.forward(self, x, text)
@@ -706,7 +710,6 @@ class YOLOESegment(YOLOEDetect):
             x, mask = YOLOEDetect.forward(self, x, text, return_mask=True)
 
         if not has_lrpc and self.separate_outputs and self.export:
-            mc = [torch.permute(self.cv5[i](x[i]), (0, 2, 3, 1)).reshape(bs, -1, self.nm) for i in range(self.nl)] # mask coefficients
             p = p.permute(0, 2, 3, 1)
             proto_shape = p.shape
             return x, mc, p.reshape(proto_shape[0], proto_shape[1] * proto_shape[2], proto_shape[3])
