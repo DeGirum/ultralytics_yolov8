@@ -45,7 +45,8 @@ model.train(data="imdb10-age.yaml", epochs=3)  # train the model
 metrics = model.val()  # evaluate model performance on the validation set
 results = model("https://ultralytics.com/images/zidane.jpg")  # predict on an image
 path = model.export(format='onnx', export_hw_optimized=True) # export model to ONNX format
-metrics = model.val(path)  # evaluate model performance on exported model
+exported_model = YOLO(path)  # load exported model
+metrics = exported_model.val(data="imdb10-age.yaml", imgsz=224, rect=False, device="cpu")  # evaluate exported model performance on the validation set
 ```
 
 The model with a Regress6 head is used in a similar way:
@@ -60,7 +61,8 @@ model.train(data="imdb10-age.yaml", epochs=3)  # train the model
 metrics = model.val()  # evaluate model performance on the validation set
 results = model("https://ultralytics.com/images/zidane.jpg")  # predict on an image
 path = model.export(format='onnx', export_hw_optimized=True) # export model to ONNX format
-metrics = model.val(path)  # evaluate model performance on exported model
+exported_model = YOLO(path)  # load exported model
+metrics = exported_model.val(data="imdb10-age.yaml", imgsz=224, rect=False, device="cpu")  # evaluate exported model performance on the validation set
 ```
 
 <div align="center">

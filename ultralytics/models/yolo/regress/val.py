@@ -41,8 +41,8 @@ class RegressionValidator(BaseValidator):
         self.names = model.names
         self.pred = []
         self.targets = []
-        self.max = model.metadata["max_value"] if (isinstance(model, AutoBackend) and not model.pt) else 6
-        self.min = model.metadata["min_value"] if (isinstance(model, AutoBackend) and not model.pt) else 0
+        self.max = int(model.metadata["max_value"]) if (isinstance(model, AutoBackend) and not model.pt) else 6
+        self.min = int(model.metadata["min_value"]) if (isinstance(model, AutoBackend) and not model.pt) else 0
 
     def preprocess(self, batch):
         """Preprocesses input batch and returns it."""

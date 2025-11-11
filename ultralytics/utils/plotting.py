@@ -861,6 +861,7 @@ def plot_results(
     segment: bool = False,
     pose: bool = False,
     classify: bool = False,
+    regress: bool = False,
     on_plot: Optional[Callable] = None,
 ):
     """
@@ -873,6 +874,7 @@ def plot_results(
         segment (bool, optional): Flag to indicate if the data is for segmentation.
         pose (bool, optional): Flag to indicate if the data is for pose estimation.
         classify (bool, optional): Flag to indicate if the data is for classification.
+        regress (bool, optional): Flag to indicate if the data is for regression.
         on_plot (callable, optional): Callback function to be executed after plotting. Takes filename as an argument.
 
     Examples:
@@ -884,7 +886,7 @@ def plot_results(
     from scipy.ndimage import gaussian_filter1d
 
     save_dir = Path(file).parent if file else Path(dir)
-    if classify:
+    if classify or regress:
         fig, ax = plt.subplots(2, 2, figsize=(6, 6), tight_layout=True)
         index = [2, 5, 3, 4]
     elif segment:
