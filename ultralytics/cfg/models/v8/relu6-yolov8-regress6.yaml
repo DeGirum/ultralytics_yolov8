@@ -31,4 +31,4 @@ head:
   - [-1, 1, Regress6, [1]]  # Regress6
 
 min_value: 1
-max_value: 95
+max_value: 91

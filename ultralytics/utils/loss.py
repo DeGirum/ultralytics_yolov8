@@ -903,7 +903,26 @@ class v8RegressionLoss:
 
     def __call__(self, preds, batch):
         """Compute the regression loss between predictions and true labels."""
-        loss = torch.nn.functional.l1_loss(preds.view(preds.size()[0]), batch["value"].float(), reduction="mean")
+        pred_ages = preds.view(preds.size()[0])
+        true_ages = batch["value"].float()
+        
+        # original loss
+        # loss = torch.nn.functional.l1_loss(preds.view(preds.size()[0]), batch["value"].float(), reduction="mean")
+
+        # Option 1: Smooth L1 Loss (Huber) - RECOMMENDED
+        loss = torch.nn.functional.smooth_l1_loss(pred_ages, true_ages, reduction="mean", beta=1.0)
+        
+        # Option 2: MSE (L2)
+        # loss = torch.nn.functional.mse_loss(pred_ages, true_ages, reduction="mean")
+        
+        # Option 3: Age-weighted MSE
+        # age_weights = 1.0 / (true_ages + 10.0)  # Higher weight for younger ages
+        # loss = (age_weights * (pred_ages - true_ages) ** 2).mean()
+        
+        # Option 4: Relative error weighted loss
+        # relative_errors = torch.abs(pred_ages - true_ages) / (true_ages + 1.0)
+        # loss = relative_errors.mean()
+        
         loss_items = loss.detach()
         return loss, loss_items
 

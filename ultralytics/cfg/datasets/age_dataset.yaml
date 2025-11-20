@@ -1,0 +1,7 @@
+# Age Detection Dataset
+path: /data/ml-data/age_aws_rekognition_labelled
+train: annotations_train.json
+val: annotations_val.json
+
+names:
+  0: Age

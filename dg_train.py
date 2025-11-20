@@ -32,6 +32,7 @@ def parser_arguments():
     parser.add_argument('--copy-paste', type=float, default=0.00, help='copy-paste (probability)')
     parser.add_argument('--copy-paste-mode', type=str, default="mixup", help='copy-paste mode')
     parser.add_argument('--fliplr', type=float, default=0.5, help='image scale (+/- gain)')
+    parser.add_argument('--erasing', type=float, default=0.4, help='image erasing (probability)')
 
     
     return parser.parse_args()
